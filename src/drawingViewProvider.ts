@@ -3,6 +3,9 @@ import * as vscode from 'vscode';
 export class DrawingViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'rectangleDrawerView';
     private static currentPanel: vscode.WebviewPanel | undefined;
+    private static currentData: any = { rectangles: [], connections: [] }; // Shared data store
+    private static lastSaveLocation: vscode.Uri | undefined;
+    private static lastLoadLocation: vscode.Uri | undefined;
 
     constructor(private readonly _extensionUri: vscode.Uri) {}
 
@@ -16,7 +19,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             localResourceRoots: [this._extensionUri]
         };
 
-        webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
+        webviewView.webview.html = this._getHtmlForWebview(webviewView.webview, 'sidebar');
 
         webviewView.webview.onDidReceiveMessage(
             message => {
@@ -27,18 +30,33 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     case 'loadDrawing':
                         this._loadDrawing(webviewView.webview);
                         break;
+                    case 'dataChanged':
+                        // Update shared data store
+                        DrawingViewProvider.currentData = message.data;
+                        break;
+                    case 'openInPanel':
+                        this._openInPanelWithData(message.data);
+                        break;
                 }
             }
         );
     }
 
-    public static createOrShow(extensionUri: vscode.Uri) {
+    public static createOrShow(extensionUri: vscode.Uri, initialData?: any) {
         const column = vscode.window.activeTextEditor
             ? vscode.window.activeTextEditor.viewColumn
             : undefined;
 
         if (DrawingViewProvider.currentPanel) {
             DrawingViewProvider.currentPanel.reveal(column);
+            // Update with new data if provided
+            if (initialData) {
+                DrawingViewProvider.currentData = initialData;
+                DrawingViewProvider.currentPanel.webview.postMessage({ 
+                    type: 'loadData', 
+                    data: initialData 
+                });
+            }
             return;
         }
 
@@ -48,13 +66,20 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             column || vscode.ViewColumn.One,
             {
                 enableScripts: true,
-                localResourceRoots: [extensionUri]
+                localResourceRoots: [extensionUri],
+                retainContextWhenHidden: true
             }
         );
 
         DrawingViewProvider.currentPanel = panel;
 
-        panel.webview.html = new DrawingViewProvider(extensionUri)._getHtmlForWebview(panel.webview);
+        panel.webview.html = new DrawingViewProvider(extensionUri)._getHtmlForWebview(panel.webview, 'panel');
+
+        // Load initial data if provided, otherwise use shared data
+        const dataToLoad = initialData || DrawingViewProvider.currentData;
+        setTimeout(() => {
+            panel.webview.postMessage({ type: 'loadData', data: dataToLoad });
+        }, 500);
 
         panel.onDidDispose(() => {
             DrawingViewProvider.currentPanel = undefined;
@@ -70,27 +95,118 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     case 'loadDrawing':
                         provider._loadDrawing(panel.webview);
                         break;
+                    case 'dataChanged':
+                        DrawingViewProvider.currentData = message.data;
+                        break;
                 }
             }
         );
     }
 
-    private _saveDrawing(data: any) {
-        vscode.window.showInformationMessage('Drawing saved!');
-        // In a real implementation, you might save to workspace storage or a file
-        console.log('Saving drawing data:', data);
+    private _openInPanelWithData(data: any) {
+        // Store the current data
+        DrawingViewProvider.currentData = data;
+        // Create or show panel with data
+        DrawingViewProvider.createOrShow(this._extensionUri, data);
+        // Close sidebar view by focusing on the panel
+        vscode.commands.executeCommand('workbench.action.closeSidebar');
     }
 
-    private _loadDrawing(webview: vscode.Webview) {
-        // In a real implementation, you might load from workspace storage or a file
-        const sampleData = {
-            rectangles: [],
-            connections: []
-        };
-        webview.postMessage({ type: 'loadData', data: sampleData });
+    private async _saveDrawing(data: any) {
+        try {
+            // Update shared data
+            DrawingViewProvider.currentData = data;
+            
+            // Determine default URI based on last save location
+            let defaultUri: vscode.Uri;
+            if (DrawingViewProvider.lastSaveLocation) {
+                // Use same directory as last save
+                const lastDir = vscode.Uri.joinPath(DrawingViewProvider.lastSaveLocation, '..');
+                defaultUri = vscode.Uri.joinPath(lastDir, 'rectangle-drawing.json');
+            } else {
+                defaultUri = vscode.Uri.file('rectangle-drawing.json');
+            }
+            
+            // Show save dialog
+            const saveUri = await vscode.window.showSaveDialog({
+                defaultUri: defaultUri,
+                filters: {
+                    'JSON Files': ['json'],
+                    'All Files': ['*']
+                }
+            });
+
+            if (saveUri) {
+                // Remember this location for next time
+                DrawingViewProvider.lastSaveLocation = saveUri;
+                
+                // Create formatted JSON with metadata
+                const saveData = {
+                    version: "1.0",
+                    created: new Date().toISOString(),
+                    rectangles: data.rectangles,
+                    connections: data.connections
+                };
+
+                const jsonContent = JSON.stringify(saveData, null, 2);
+                await vscode.workspace.fs.writeFile(saveUri, Buffer.from(jsonContent, 'utf8'));
+                
+                vscode.window.showInformationMessage(`Drawing saved to ${saveUri.fsPath}`);
+            }
+        } catch (error) {
+            vscode.window.showErrorMessage(`Failed to save drawing: ${error}`);
+        }
     }
 
-    private _getHtmlForWebview(webview: vscode.Webview) {
+    private async _loadDrawing(webview: vscode.Webview) {
+        try {
+            // Determine default URI based on last load location
+            let defaultUri: vscode.Uri | undefined;
+            if (DrawingViewProvider.lastLoadLocation) {
+                // Use same directory as last load
+                defaultUri = vscode.Uri.joinPath(DrawingViewProvider.lastLoadLocation, '..');
+            }
+            
+            // Show open dialog
+            const openUri = await vscode.window.showOpenDialog({
+                canSelectFiles: true,
+                canSelectFolders: false,
+                canSelectMany: false,
+                defaultUri: defaultUri,
+                filters: {
+                    'JSON Files': ['json'],
+                    'All Files': ['*']
+                }
+            });
+
+            if (openUri && openUri[0]) {
+                // Remember this location for next time
+                DrawingViewProvider.lastLoadLocation = openUri[0];
+                
+                const fileContent = await vscode.workspace.fs.readFile(openUri[0]);
+                const jsonContent = Buffer.from(fileContent).toString('utf8');
+                const loadedData = JSON.parse(jsonContent);
+                
+                // Extract rectangles and connections, handling different formats
+                const data = {
+                    rectangles: loadedData.rectangles || [],
+                    connections: loadedData.connections || []
+                };
+
+                // Update shared data
+                DrawingViewProvider.currentData = data;
+                
+                // Send to webview
+                webview.postMessage({ type: 'loadData', data: data });
+                
+                vscode.window.showInformationMessage(`Drawing loaded from ${openUri[0].fsPath}`);
+            }
+        } catch (error) {
+            vscode.window.showErrorMessage(`Failed to load drawing: ${error}`);
+        }
+    }
+
+    private _getHtmlForWebview(webview: vscode.Webview, context: string = 'sidebar') {
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -113,17 +229,17 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         }
         
         .controls {
-            padding: 8px;
+            padding: ${context === 'sidebar' ? '6px' : '10px'};
             background-color: var(--vscode-panel-background);
             border-bottom: 1px solid var(--vscode-panel-border);
             flex-shrink: 0;
-            font-size: 12px;
+            font-size: ${context === 'sidebar' ? '11px' : '13px'};
         }
         
         .controls button {
-            font-size: 11px;
-            padding: 4px 8px;
-            margin-right: 4px;
+            font-size: ${context === 'sidebar' ? '10px' : '12px'};
+            padding: ${context === 'sidebar' ? '3px 6px' : '6px 12px'};
+            margin-right: ${context === 'sidebar' ? '3px' : '8px'};
         }
         
         #canvas {
@@ -159,13 +275,13 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         }
         
         .info {
-            padding: 8px;
-            font-size: 11px;
+            padding: ${context === 'sidebar' ? '6px' : '10px'};
+            font-size: ${context === 'sidebar' ? '10px' : '12px'};
             color: var(--vscode-descriptionForeground);
             background-color: var(--vscode-panel-background);
             border-top: 1px solid var(--vscode-panel-border);
             flex-shrink: 0;
-            max-height: 120px;
+            max-height: ${context === 'sidebar' ? '100px' : '150px'};
             overflow-y: auto;
         }
         
@@ -209,6 +325,11 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         <button onclick="clearCanvas()">Clear All</button>
         <button onclick="saveDrawing()">Save</button>
         <button onclick="loadDrawing()">Load</button>
+        <button onclick="resetView()">Reset View</button>
+        ${context === 'sidebar' ? '<button onclick="openInPanel()">Open in Panel</button>' : ''}
+        <span style="margin-left: 10px; font-size: ${context === 'sidebar' ? '9px' : '11px'};">
+            Zoom: <span id="zoomLevel">100%</span>
+        </span>
     </div>
     
     <div class="canvas-container">
@@ -223,12 +344,13 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         <div><strong>Instructions:</strong></div>
         <div>• Left-click and drag to create rectangles</div>
         <div>• Right-click and drag to connect rectangles</div>
-        <div>• Connections snap to edges (right → left)</div>
         <div>• Click on rectangles to select them</div>
         <div>• Drag selected rectangles to move them</div>
         <div>• Drag resize handles (white squares) to resize</div>
         <div>• <strong>Right-click rectangles or connections to delete</strong></div>
-        <div>• Connections automatically update when moving/resizing</div>
+        <div>• <strong>Middle-click and drag to pan</strong></div>
+        <div>• <strong>Mouse wheel to zoom in/out</strong></div>
+        <div>• Save/Load remembers last used folder</div>
     </div>
 
     <script>
@@ -283,6 +405,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         let isConnecting = false;
         let isDragging = false;
         let isResizing = false;
+        let isPanning = false;
         let startPoint = null;
         let currentRect = null;
         let selectedRect = null;
@@ -292,6 +415,13 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         let dragOffset = { x: 0, y: 0 };
         let resizeHandle = null;
         let contextMenu = null;
+        
+        // Pan and zoom variables
+        let panX = 0;
+        let panY = 0;
+        let zoom = 1;
+        let panStartX = 0;
+        let panStartY = 0;
         
         // Rectangle class
         class Rectangle {
@@ -487,14 +617,17 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         canvas.addEventListener('mousemove', handleMouseMove);
         canvas.addEventListener('mouseup', handleMouseUp);
         canvas.addEventListener('contextmenu', handleContextMenu);
+        canvas.addEventListener('wheel', handleWheel);
         document.addEventListener('click', hideContextMenu);
         
         function handleContextMenu(e) {
             e.preventDefault();
             
             const rect = canvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
+            const screenX = e.clientX - rect.left;
+            const screenY = e.clientY - rect.top;
+            const x = (screenX - panX) / zoom;
+            const y = (screenY - panY) / zoom;
             
             // Check what was right-clicked
             const clickedRect = rectangles.find(r => r.contains(x, y));
@@ -551,15 +684,50 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             }
         }
         
+        function handleWheel(e) {
+            e.preventDefault();
+            
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            
+            // Convert mouse coordinates to world coordinates
+            const worldX = (mouseX - panX) / zoom;
+            const worldY = (mouseY - panY) / zoom;
+            
+            // Zoom factor
+            const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+            const newZoom = Math.max(0.1, Math.min(5.0, zoom * zoomFactor));
+            
+            // Calculate new pan to keep mouse position fixed
+            panX = mouseX - worldX * newZoom;
+            panY = mouseY - worldY * newZoom;
+            zoom = newZoom;
+            
+            updateZoomDisplay();
+            draw();
+        }
+        
         function handleMouseDown(e) {
             const rect = canvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
+            const screenX = e.clientX - rect.left;
+            const screenY = e.clientY - rect.top;
+            
+            // Convert screen coordinates to world coordinates
+            const x = (screenX - panX) / zoom;
+            const y = (screenY - panY) / zoom;
             
             // Hide context menu if visible
             hideContextMenu();
             
-            if (e.button === 0) { // Left click
+            if (e.button === 1) { // Middle button - start panning
+                isPanning = true;
+                panStartX = screenX - panX;
+                panStartY = screenY - panY;
+                canvas.style.cursor = 'grabbing';
+                e.preventDefault();
+                return;
+            } else if (e.button === 0) { // Left click
                 // Check if clicking on existing rectangle
                 const clickedRect = rectangles.find(r => r.contains(x, y));
                 const clickedConnection = connections.find(c => c.isNearConnection(x, y));
@@ -618,11 +786,23 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         
         function handleMouseMove(e) {
             const rect = canvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
+            const screenX = e.clientX - rect.left;
+            const screenY = e.clientY - rect.top;
+            
+            // Handle panning
+            if (isPanning) {
+                panX = screenX - panStartX;
+                panY = screenY - panStartY;
+                draw();
+                return;
+            }
+            
+            // Convert screen coordinates to world coordinates
+            const x = (screenX - panX) / zoom;
+            const y = (screenY - panY) / zoom;
             
             // Update cursor based on what's under the mouse
-            if (selectedRect && !isDragging && !isResizing && !isDrawing && !isConnecting) {
+            if (selectedRect && !isDragging && !isResizing && !isDrawing && !isConnecting && !isPanning) {
                 const handle = selectedRect.getResizeHandle(x, y);
                 if (handle) {
                     setCursor(handle);
@@ -665,9 +845,13 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     endY = targetRect.y + targetRect.height / 2;
                 }
                 
+                // Apply transform for drawing temporary connection
+                ctx.save();
+                ctx.setTransform(zoom, 0, 0, zoom, panX, panY);
+                
                 ctx.setLineDash([5, 5]);
                 ctx.strokeStyle = '#ff6b6b';
-                ctx.lineWidth = 2;
+                ctx.lineWidth = 2 / zoom; // Adjust line width for zoom
                 drawCurvedConnection(startPoint.x, startPoint.y, endX, endY);
                 ctx.setLineDash([]);
                 
@@ -676,6 +860,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 if (targetRect) {
                     drawConnectionDot(endX, endY);
                 }
+                
+                ctx.restore();
             }
         }
         
@@ -703,9 +889,17 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         }
         
         function handleMouseUp(e) {
+            if (isPanning) {
+                isPanning = false;
+                canvas.style.cursor = 'crosshair';
+                return;
+            }
+            
             const rect = canvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
+            const screenX = e.clientX - rect.left;
+            const screenY = e.clientY - rect.top;
+            const x = (screenX - panX) / zoom;
+            const y = (screenY - panY) / zoom;
             
             if (isDrawing && currentRect && currentRect.width > 5 && currentRect.height > 5) {
                 const newRect = new Rectangle(
@@ -715,6 +909,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     currentRect.height
                 );
                 rectangles.push(newRect);
+                notifyDataChanged();
             }
             
             if (isConnecting && startPoint) {
@@ -733,13 +928,20 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         endPoint
                     );
                     connections.push(connection);
+                    notifyDataChanged();
                 }
+            }
+            
+            // Notify of changes if we were dragging or resizing
+            if (isDragging || isResizing) {
+                notifyDataChanged();
             }
             
             isDrawing = false;
             isConnecting = false;
             isDragging = false;
             isResizing = false;
+            isPanning = false;
             startPoint = null;
             currentRect = null;
             resizeHandle = null;
@@ -747,8 +949,34 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             draw();
         }
         
+        function notifyDataChanged() {
+            const data = {
+                rectangles: rectangles.map(r => ({
+                    x: r.x,
+                    y: r.y,
+                    width: r.width,
+                    height: r.height,
+                    id: r.id
+                })),
+                connections: connections.map(c => ({
+                    fromRectId: c.fromRect.id,
+                    toRectId: c.toRect.id,
+                    id: c.id
+                }))
+            };
+            
+            vscode.postMessage({
+                type: 'dataChanged',
+                data: data
+            });
+        }
+
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Save context and apply pan/zoom transform
+            ctx.save();
+            ctx.setTransform(zoom, 0, 0, zoom, panX, panY);
             
             // Draw connections
             connections.forEach(conn => {
@@ -758,10 +986,10 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 
                 if (conn.selected) {
                     ctx.strokeStyle = '#ff6b6b';
-                    ctx.lineWidth = 3;
+                    ctx.lineWidth = 3 / zoom; // Adjust line width for zoom
                 } else {
                     ctx.strokeStyle = '#4ecdc4';
-                    ctx.lineWidth = 2;
+                    ctx.lineWidth = 2 / zoom; // Adjust line width for zoom
                 }
                 
                 // Draw curved line using bezier curve
@@ -777,11 +1005,11 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 if (rectangle.selected) {
                     ctx.fillStyle = 'rgba(100, 150, 255, 0.3)';
                     ctx.strokeStyle = '#6496ff';
-                    ctx.lineWidth = 2;
+                    ctx.lineWidth = 2 / zoom; // Adjust line width for zoom
                 } else {
                     ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
                     ctx.strokeStyle = '#ffffff';
-                    ctx.lineWidth = 1;
+                    ctx.lineWidth = 1 / zoom; // Adjust line width for zoom
                 }
                 
                 ctx.fillRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height);
@@ -805,11 +1033,14 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             // Draw current rectangle being drawn
             if (currentRect) {
                 ctx.strokeStyle = '#ffeb3b';
-                ctx.lineWidth = 2;
-                ctx.setLineDash([5, 5]);
+                ctx.lineWidth = 2 / zoom; // Adjust line width for zoom
+                ctx.setLineDash([5 / zoom, 5 / zoom]); // Adjust dash pattern for zoom
                 ctx.strokeRect(currentRect.x, currentRect.y, currentRect.width, currentRect.height);
                 ctx.setLineDash([]);
             }
+            
+            // Restore context
+            ctx.restore();
         }
         
         function drawCurvedConnection(fromX, fromY, toX, toY) {
@@ -837,15 +1068,16 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 ctx.fillStyle = '#4ecdc4';
             }
             
+            const radius = 4 / zoom; // Adjust radius for zoom
             ctx.beginPath();
-            ctx.arc(x, y, 4, 0, 2 * Math.PI);
+            ctx.arc(x, y, radius, 0, 2 * Math.PI);
             ctx.fill();
             
             // Add a white border for better visibility
             ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 1;
+            ctx.lineWidth = 1 / zoom; // Adjust line width for zoom
             ctx.beginPath();
-            ctx.arc(x, y, 4, 0, 2 * Math.PI);
+            ctx.arc(x, y, radius, 0, 2 * Math.PI);
             ctx.stroke();
         }
         
@@ -870,7 +1102,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         }
         
         function drawResizeHandles(rectangle) {
-            const handleSize = 8;
+            const handleSize = 8 / zoom; // Adjust handle size for zoom
             const handles = [
                 { x: rectangle.x, y: rectangle.y }, // top-left
                 { x: rectangle.x + rectangle.width, y: rectangle.y }, // top-right
@@ -884,7 +1116,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             
             ctx.fillStyle = '#ffffff';
             ctx.strokeStyle = '#6496ff';
-            ctx.lineWidth = 1;
+            ctx.lineWidth = 1 / zoom; // Adjust line width for zoom
             
             handles.forEach(handle => {
                 ctx.fillRect(handle.x - handleSize / 2, handle.y - handleSize / 2, handleSize, handleSize);
@@ -897,21 +1129,30 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             connections = [];
             selectedRect = null;
             selectedConnection = null;
+            notifyDataChanged();
             draw();
         }
         
         function deleteSelected() {
+            let dataChanged = false;
+            
             if (selectedRect) {
                 // Remove the rectangle and all its connections
                 const rectId = selectedRect.id;
                 rectangles = rectangles.filter(r => r.id !== rectId);
                 connections = connections.filter(c => c.fromRect.id !== rectId && c.toRect.id !== rectId);
                 selectedRect = null;
+                dataChanged = true;
             } else if (selectedConnection) {
                 // Remove the connection
                 const connId = selectedConnection.id;
                 connections = connections.filter(c => c.id !== connId);
                 selectedConnection = null;
+                dataChanged = true;
+            }
+            
+            if (dataChanged) {
+                notifyDataChanged();
             }
             
             hideContextMenu();
@@ -944,6 +1185,44 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             vscode.postMessage({
                 type: 'loadDrawing'
             });
+        }
+        
+        function openInPanel() {
+            // Get current drawing data
+            const data = {
+                rectangles: rectangles.map(r => ({
+                    x: r.x,
+                    y: r.y,
+                    width: r.width,
+                    height: r.height,
+                    id: r.id
+                })),
+                connections: connections.map(c => ({
+                    fromRectId: c.fromRect.id,
+                    toRectId: c.toRect.id,
+                    id: c.id
+                }))
+            };
+            
+            vscode.postMessage({
+                type: 'openInPanel',
+                data: data
+            });
+        }
+        
+        function resetView() {
+            panX = 0;
+            panY = 0;
+            zoom = 1;
+            updateZoomDisplay();
+            draw();
+        }
+        
+        function updateZoomDisplay() {
+            const zoomElement = document.getElementById('zoomLevel');
+            if (zoomElement) {
+                zoomElement.textContent = Math.round(zoom * 100) + '%';
+            }
         }
         
         // Listen for messages from the extension

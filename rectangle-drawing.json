@@ -1,0 +1,27 @@
+{
+  "version": "1.0",
+  "created": "2025-10-09T13:40:15.036Z",
+  "rectangles": [
+    {
+      "x": 32,
+      "y": 49.79999923706055,
+      "width": 54,
+      "height": 38,
+      "id": "kz615sk13"
+    },
+    {
+      "x": 104,
+      "y": 131.79999923706055,
+      "width": 151,
+      "height": 71,
+      "id": "4epzve3cl"
+    }
+  ],
+  "connections": [
+    {
+      "fromRectId": "kz615sk13",
+      "toRectId": "4epzve3cl",
+      "id": "lqq7y6jcw"
+    }
+  ]
+}

@@ -15,8 +15,15 @@
     "commands": [
       {
         "command": "rectangleDrawer.openDrawingView",
-        "title": "Open Rectangle Drawer",
-        "category": "Rectangle Drawer"
+        "title": "Open in Panel",
+        "category": "Rectangle Drawer",
+        "icon": "$(window)"
+      },
+      {
+        "command": "rectangleDrawer.openInSidebar",
+        "title": "Show in Sidebar",
+        "category": "Rectangle Drawer",
+        "icon": "$(layout-sidebar-left)"
       }
     ],
     "viewsContainers": {
@@ -34,6 +41,25 @@
           "id": "rectangleDrawerView",
           "name": "Drawing Canvas",
           "type": "webview",
+          "when": "true"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "rectangleDrawer.openDrawingView",
+          "when": "view == rectangleDrawerView",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "rectangleDrawer.openDrawingView",
+          "when": "true"
+        },
+        {
+          "command": "rectangleDrawer.openInSidebar",
           "when": "true"
         }
       ]
