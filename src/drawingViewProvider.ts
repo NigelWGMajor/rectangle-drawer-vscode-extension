@@ -30,6 +30,9 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     case 'loadDrawing':
                         this._loadDrawing(webviewView.webview);
                         break;
+                    case 'exportToHTML':
+                        this._exportToHTML(message.data);
+                        break;
                     case 'dataChanged':
                         // Update shared data store
                         DrawingViewProvider.currentData = message.data;
@@ -94,6 +97,9 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         break;
                     case 'loadDrawing':
                         provider._loadDrawing(panel.webview);
+                        break;
+                    case 'exportToHTML':
+                        provider._exportToHTML(message.data);
                         break;
                     case 'dataChanged':
                         DrawingViewProvider.currentData = message.data;
@@ -211,6 +217,434 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         } catch (error) {
             vscode.window.showErrorMessage(`Failed to load drawing: ${error}`);
         }
+    }
+
+    private async _exportToHTML(data: any) {
+        try {
+            // Determine default URI for HTML export
+            let defaultUri: vscode.Uri;
+            if (DrawingViewProvider.lastSaveLocation) {
+                const lastDir = vscode.Uri.joinPath(DrawingViewProvider.lastSaveLocation, '..');
+                defaultUri = vscode.Uri.joinPath(lastDir, 'rectangle-drawing.html');
+            } else if (DrawingViewProvider.lastLoadLocation) {
+                const lastDir = vscode.Uri.joinPath(DrawingViewProvider.lastLoadLocation, '..');
+                defaultUri = vscode.Uri.joinPath(lastDir, 'rectangle-drawing.html');
+            } else {
+                defaultUri = vscode.Uri.file('rectangle-drawing.html');
+            }
+
+            // Show save dialog
+            const saveUri = await vscode.window.showSaveDialog({
+                defaultUri: defaultUri,
+                filters: {
+                    'HTML Files': ['html'],
+                    'All Files': ['*']
+                }
+            });
+
+            if (saveUri) {
+                // Generate standalone HTML content
+                const htmlContent = this._generateStandaloneHTML(data);
+                await vscode.workspace.fs.writeFile(saveUri, Buffer.from(htmlContent, 'utf8'));
+                
+                vscode.window.showInformationMessage(`Drawing exported to ${saveUri.fsPath}`);
+                
+                // Open in default browser
+                await vscode.env.openExternal(saveUri);
+            }
+        } catch (error) {
+            vscode.window.showErrorMessage(`Failed to export drawing: ${error}`);
+        }
+    }
+
+    private _generateStandaloneHTML(data: any): string {
+        return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rectangle Drawing Export</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #1e1e1e;
+            color: #ffffff;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #canvas {
+            border: none;
+            cursor: crosshair;
+            background-color: #1e1e1e;
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .tooltip {
+            position: absolute;
+            background: #252526;
+            border: 1px solid #454545;
+            border-radius: 3px;
+            padding: 8px 12px;
+            color: #cccccc;
+            font-size: 12px;
+            z-index: 1500;
+            max-width: 300px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            pointer-events: none;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="tooltip" class="tooltip"></div>
+    
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Set canvas size to full window
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            draw();
+        }
+        
+        window.addEventListener('resize', resizeCanvas);
+        
+        // Grid and zoom settings
+        let zoom = 1;
+        let panX = 0;
+        let panY = 0;
+        const gridSize = 10;
+        
+        // Data
+        let rectangles = [];
+        let connections = [];
+        
+        // Classes
+        class Rectangle {
+            constructor(x, y, width, height, name = '', description = '', payload = '') {
+                this.x = x;
+                this.y = y;
+                this.width = width;
+                this.height = height;
+                this.selected = false;
+                this.id = Math.random().toString(36).substr(2, 9);
+                this.name = name;
+                this.description = description;
+                this.payload = payload;
+            }
+            
+            contains(x, y) {
+                return x >= this.x && x <= this.x + this.width &&
+                       y >= this.y && y <= this.y + this.height;
+            }
+        }
+        
+        class Connection {
+            constructor(fromRect, fromPoint, toRect, toPoint, label = '', description = '', payload = '') {
+                this.fromRect = fromRect;
+                this.fromPoint = fromPoint;
+                this.toRect = toRect;
+                this.toPoint = toPoint;
+                this.id = Math.random().toString(36).substr(2, 9);
+                this.selected = false;
+                this.label = label;
+                this.description = description;
+                this.payload = payload;
+                this.labelPosition = null;
+            }
+            
+            getConnectionPoints() {
+                const fromEdge = { x: this.fromRect.x + this.fromRect.width, y: this.fromRect.y + this.fromRect.height / 2 };
+                const toEdge = { x: this.toRect.x, y: this.toRect.y + this.toRect.height / 2 };
+                return { from: fromEdge, to: toEdge };
+            }
+            
+            isNearConnection(x, y, tolerance = 8) {
+                const points = this.getConnectionPoints();
+                for (let t = 0; t <= 1; t += 0.05) {
+                    const curvePoint = getBezierPoint(points.from.x, points.from.y, points.to.x, points.to.y, t);
+                    const distance = Math.sqrt((x - curvePoint.x) ** 2 + (y - curvePoint.y) ** 2);
+                    if (distance <= tolerance / zoom) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+        }
+        
+        function getBezierPoint(fromX, fromY, toX, toY, t) {
+            const distance = Math.abs(toX - fromX);
+            const curveOffset = Math.min(distance * 0.5, 80);
+            const cp1X = fromX + curveOffset;
+            const cp1Y = fromY;
+            const cp2X = toX - curveOffset;
+            const cp2Y = toY;
+            
+            const t1 = 1 - t;
+            const t12 = t1 * t1;
+            const t13 = t12 * t1;
+            const t2 = t * t;
+            const t3 = t2 * t;
+            
+            return {
+                x: t13 * fromX + 3 * t12 * t * cp1X + 3 * t1 * t2 * cp2X + t3 * toX,
+                y: t13 * fromY + 3 * t12 * t * cp1Y + 3 * t1 * t2 * cp2Y + t3 * toY
+            };
+        }
+        
+        function drawGrid() {
+            ctx.save();
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            
+            const startX = Math.floor((-panX) / zoom / gridSize) * gridSize;
+            const startY = Math.floor((-panY) / zoom / gridSize) * gridSize;
+            const endX = Math.ceil((canvas.width - panX) / zoom / gridSize) * gridSize;
+            const endY = Math.ceil((canvas.height - panY) / zoom / gridSize) * gridSize;
+            
+            ctx.strokeStyle = '#333333';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            
+            for (let x = startX; x <= endX; x += gridSize) {
+                const screenX = x * zoom + panX;
+                ctx.moveTo(screenX, 0);
+                ctx.lineTo(screenX, canvas.height);
+            }
+            
+            for (let y = startY; y <= endY; y += gridSize) {
+                const screenY = y * zoom + panY;
+                ctx.moveTo(0, screenY);
+                ctx.lineTo(canvas.width, screenY);
+            }
+            
+            ctx.stroke();
+            ctx.restore();
+        }
+        
+        function drawCurvedConnection(fromX, fromY, toX, toY) {
+            ctx.beginPath();
+            ctx.moveTo(fromX, fromY);
+            
+            const distance = Math.abs(toX - fromX);
+            const curveOffset = Math.min(distance * 0.5, 80);
+            const cp1X = fromX + curveOffset;
+            const cp1Y = fromY;
+            const cp2X = toX - curveOffset;
+            const cp2Y = toY;
+            
+            ctx.bezierCurveTo(cp1X, cp1Y, cp2X, cp2Y, toX, toY);
+            ctx.stroke();
+        }
+        
+        function drawConnectionDot(x, y) {
+            ctx.fillStyle = '#4ecdc4';
+            const radius = 4 / zoom;
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1 / zoom;
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, 2 * Math.PI);
+            ctx.stroke();
+        }
+        
+        function drawRectangleText(rectangle) {
+            if (!rectangle.name) return;
+            
+            ctx.fillStyle = '#ffffff';
+            ctx.font = (12 / zoom) + 'px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            const centerX = rectangle.x + rectangle.width / 2;
+            const centerY = rectangle.y + rectangle.height / 2;
+            
+            ctx.fillText(rectangle.name, centerX, centerY);
+        }
+        
+        function drawConnectionLabel(connection) {
+            if (!connection.label) return;
+            
+            const points = connection.getConnectionPoints();
+            let labelPos;
+            
+            if (connection.labelPosition) {
+                labelPos = connection.labelPosition;
+            } else {
+                labelPos = getBezierPoint(points.from.x, points.from.y, points.to.x, points.to.y, 0.5);
+            }
+            
+            ctx.fillStyle = '#4ecdc4';
+            ctx.font = (10 / zoom) + 'px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            const textWidth = ctx.measureText(connection.label).width + 8 / zoom;
+            const textHeight = 16 / zoom;
+            
+            ctx.fillRect(labelPos.x - textWidth/2, labelPos.y - textHeight/2, textWidth, textHeight);
+            
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(connection.label, labelPos.x, labelPos.y);
+        }
+        
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            drawGrid();
+            
+            ctx.save();
+            ctx.setTransform(zoom, 0, 0, zoom, panX, panY);
+            
+            // Draw connections
+            connections.forEach(conn => {
+                const points = conn.getConnectionPoints();
+                const fromPoint = points.from;
+                const toPoint = points.to;
+                
+                ctx.strokeStyle = '#4ecdc4';
+                ctx.lineWidth = 2 / zoom;
+                drawCurvedConnection(fromPoint.x, fromPoint.y, toPoint.x, toPoint.y);
+                
+                drawConnectionDot(fromPoint.x, fromPoint.y);
+                drawConnectionDot(toPoint.x, toPoint.y);
+                
+                if (conn.label && conn.label.trim() !== '') {
+                    drawConnectionLabel(conn);
+                }
+            });
+            
+            // Draw rectangles
+            rectangles.forEach(rectangle => {
+                const hasLeftConnections = connections.some(c => c.toRect === rectangle);
+                const hasRightConnections = connections.some(c => c.fromRect === rectangle);
+                
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+                ctx.strokeStyle = '#ffffff';
+                
+                ctx.fillRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height);
+                
+                if (hasLeftConnections || hasRightConnections) {
+                    const normalWidth = 1 / zoom;
+                    const thickWidth = 5 / zoom;
+                    
+                    // Left edge
+                    ctx.lineWidth = hasLeftConnections ? thickWidth : normalWidth;
+                    ctx.beginPath();
+                    ctx.moveTo(rectangle.x, rectangle.y);
+                    ctx.lineTo(rectangle.x, rectangle.y + rectangle.height);
+                    ctx.stroke();
+                    
+                    // Right edge
+                    ctx.lineWidth = hasRightConnections ? thickWidth : normalWidth;
+                    ctx.beginPath();
+                    ctx.moveTo(rectangle.x + rectangle.width, rectangle.y);
+                    ctx.lineTo(rectangle.x + rectangle.width, rectangle.y + rectangle.height);
+                    ctx.stroke();
+                    
+                    // Top and bottom edges
+                    ctx.lineWidth = normalWidth;
+                    ctx.beginPath();
+                    ctx.moveTo(rectangle.x, rectangle.y);
+                    ctx.lineTo(rectangle.x + rectangle.width, rectangle.y);
+                    ctx.stroke();
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(rectangle.x, rectangle.y + rectangle.height);
+                    ctx.lineTo(rectangle.x + rectangle.width, rectangle.y + rectangle.height);
+                    ctx.stroke();
+                } else {
+                    ctx.lineWidth = 1 / zoom;
+                    ctx.strokeRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height);
+                }
+                
+                if (rectangle.name && rectangle.name.trim() !== '') {
+                    drawRectangleText(rectangle);
+                }
+            });
+            
+            ctx.restore();
+        }
+        
+        // Mouse handling for tooltips
+        canvas.addEventListener('mousemove', function(e) {
+            const rect = canvas.getBoundingClientRect();
+            const screenX = e.clientX - rect.left;
+            const screenY = e.clientY - rect.top;
+            const x = (screenX - panX) / zoom;
+            const y = (screenY - panY) / zoom;
+            
+            const tooltip = document.getElementById('tooltip');
+            const hoveredRect = rectangles.find(r => r.contains(x, y));
+            
+            if (hoveredRect && hoveredRect.description && hoveredRect.description.trim() !== '') {
+                tooltip.textContent = hoveredRect.description;
+                tooltip.style.display = 'block';
+                tooltip.style.left = (screenX + 15) + 'px';
+                tooltip.style.top = screenY + 'px';
+            } else {
+                const hoveredConnection = connections.find(c => c.isNearConnection(x, y));
+                if (hoveredConnection && hoveredConnection.description && hoveredConnection.description.trim() !== '') {
+                    tooltip.textContent = hoveredConnection.description;
+                    tooltip.style.display = 'block';
+                    tooltip.style.left = (screenX + 15) + 'px';
+                    tooltip.style.top = screenY + 'px';
+                } else {
+                    tooltip.style.display = 'none';
+                }
+            }
+        });
+        
+        // Load data and initialize
+        rectangles = ${JSON.stringify(data.rectangles)}.map(r => {
+            const rect = new Rectangle(r.x, r.y, r.width, r.height, r.name, r.description, r.payload);
+            rect.id = r.id; // Preserve original ID
+            return rect;
+        });
+        
+        console.log('Loaded rectangles:', rectangles);
+        
+        // Load connections
+        const connectionData = ${JSON.stringify(data.connections)};
+        console.log('Loading connections:', connectionData);
+        
+        connectionData.forEach(conn => {
+            const fromRect = rectangles.find(r => r.id === conn.fromRectId);
+            const toRect = rectangles.find(r => r.id === conn.toRectId);
+            console.log('Connection:', conn, 'fromRect:', fromRect, 'toRect:', toRect);
+            if (fromRect && toRect) {
+                const fromPoint = { x: fromRect.x + fromRect.width, y: fromRect.y + fromRect.height / 2 };
+                const toPoint = { x: toRect.x, y: toRect.y + toRect.height / 2 };
+                const connection = new Connection(fromRect, fromPoint, toRect, toPoint, conn.label, conn.description, conn.payload);
+                connection.id = conn.id;
+                if (conn.labelPosition) {
+                    connection.labelPosition = conn.labelPosition;
+                }
+                connections.push(connection);
+                console.log('Added connection:', connection);
+            }
+        });
+        
+        console.log('Final connections array:', connections);
+        
+        // Initialize
+        resizeCanvas();
+    </script>
+</body>
+</html>`;
     }
 
     private _getHtmlForWebview(webview: vscode.Webview, context: string = 'sidebar') {
@@ -453,6 +887,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         <button onclick="clearCanvas()">Clear All</button>
         <button onclick="saveDrawing()">Save</button>
         <button onclick="loadDrawing()">Load</button>
+        <button onclick="exportToHTML()">Export HTML</button>
         <button onclick="resetView()">Reset View</button>
         ${context === 'sidebar' ? '<button onclick="openInPanel()">Open in Panel</button>' : ''}
         <span style="margin-left: 10px; font-size: ${context === 'sidebar' ? '9px' : '11px'};">
@@ -1936,6 +2371,35 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         function loadDrawing() {
             vscode.postMessage({
                 type: 'loadDrawing'
+            });
+        }
+        
+        function exportToHTML() {
+            const data = {
+                rectangles: rectangles.map(r => ({
+                    x: r.x,
+                    y: r.y,
+                    width: r.width,
+                    height: r.height,
+                    id: r.id,
+                    name: r.name || '',
+                    description: r.description || '',
+                    payload: r.payload || ''
+                })),
+                connections: connections.map(c => ({
+                    fromRectId: c.fromRect.id,
+                    toRectId: c.toRect.id,
+                    id: c.id,
+                    label: c.label || '',
+                    description: c.description || '',
+                    payload: c.payload || '',
+                    labelPosition: c.labelPosition
+                }))
+            };
+            
+            vscode.postMessage({
+                type: 'exportToHTML',
+                data: data
             });
         }
         
