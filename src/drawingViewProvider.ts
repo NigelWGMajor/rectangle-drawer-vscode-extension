@@ -326,6 +326,22 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             margin: 4px 0;
         }
         
+        .tooltip {
+            position: absolute;
+            background: var(--vscode-editorHoverWidget-background);
+            border: 1px solid var(--vscode-editorHoverWidget-border);
+            border-radius: 3px;
+            padding: 8px 12px;
+            color: var(--vscode-editorHoverWidget-foreground);
+            font-size: 12px;
+            z-index: 1500;
+            max-width: 300px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            pointer-events: none;
+        }
+        
         .property-editor {
             position: fixed;
             top: 0;
@@ -377,6 +393,24 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         }
         
         .property-field input:focus {
+            outline: none;
+            border-color: var(--vscode-focusBorder);
+        }
+        
+        .property-field textarea {
+            width: 100%;
+            padding: 6px 8px;
+            background: var(--vscode-input-background);
+            border: 1px solid var(--vscode-input-border);
+            border-radius: 2px;
+            color: var(--vscode-input-foreground);
+            font-size: 13px;
+            box-sizing: border-box;
+            resize: vertical;
+            font-family: var(--vscode-font-family);
+        }
+        
+        .property-field textarea:focus {
             outline: none;
             border-color: var(--vscode-focusBorder);
         }
@@ -434,6 +468,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         <div class="context-menu-item" onclick="deleteSelected()">Delete</div>
     </div>
     
+    <div id="tooltip" class="tooltip" style="display: none;"></div>
+    
     <div id="propertyEditor" class="property-editor" style="display: none;">
         <div class="property-editor-content">
             <h3 id="propertyEditorTitle">Edit Properties</h3>
@@ -441,6 +477,14 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 <div class="property-field">
                     <label for="rectName">Name:</label>
                     <input type="text" id="rectName" placeholder="Enter rectangle name">
+                </div>
+                <div class="property-field">
+                    <label for="rectDescription">Description:</label>
+                    <input type="text" id="rectDescription" placeholder="Enter description (shown on hover)">
+                </div>
+                <div class="property-field">
+                    <label for="rectPayload">Payload:</label>
+                    <textarea id="rectPayload" placeholder="Enter payload data (Ctrl+C/V when selected)" rows="3"></textarea>
                 </div>
             </div>
             <div id="connectionProperties" style="display: none;">
@@ -556,7 +600,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         
         // Rectangle class
         class Rectangle {
-            constructor(x, y, width, height, name = '') {
+            constructor(x, y, width, height, name = '', description = '', payload = '') {
                 this.x = snapToGrid(x);
                 this.y = snapToGrid(y);
                 this.width = snapToGrid(Math.max(width, gridSize));
@@ -564,6 +608,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 this.selected = false;
                 this.id = Math.random().toString(36).substr(2, 9);
                 this.name = name;
+                this.description = description;
+                this.payload = payload;
             }
             
             contains(x, y) {
@@ -810,6 +856,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         canvas.addEventListener('wheel', handleWheel);
         canvas.addEventListener('dblclick', handleDoubleClick);
         document.addEventListener('click', hideContextMenu);
+        document.addEventListener('keydown', handleKeyDown);
         
         // Property editor keyboard support
         document.addEventListener('keydown', function(e) {
@@ -947,6 +994,37 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             console.log('No rectangle or connection found at click position');
         }
         
+        function handleKeyDown(e) {
+            // Only handle Ctrl+C and Ctrl+V when a rectangle is selected and no input fields are focused
+            if (!selectedRect || document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') {
+                return;
+            }
+            
+            if (e.ctrlKey || e.metaKey) { // Support both Ctrl (Windows/Linux) and Cmd (Mac)
+                if (e.key === 'c' || e.key === 'C') {
+                    // Copy payload to clipboard
+                    if (selectedRect.payload && selectedRect.payload.trim() !== '') {
+                        navigator.clipboard.writeText(selectedRect.payload).then(() => {
+                            console.log('Payload copied to clipboard:', selectedRect.payload);
+                        }).catch(err => {
+                            console.error('Failed to copy to clipboard:', err);
+                        });
+                    }
+                    e.preventDefault();
+                } else if (e.key === 'v' || e.key === 'V') {
+                    // Paste from clipboard to payload
+                    navigator.clipboard.readText().then(text => {
+                        selectedRect.payload = text;
+                        notifyDataChanged();
+                        console.log('Payload pasted from clipboard:', text);
+                    }).catch(err => {
+                        console.error('Failed to read from clipboard:', err);
+                    });
+                    e.preventDefault();
+                }
+            }
+        }
+        
         let currentEditingRect = null;
         let currentEditingConnection = null;
         let isDraggingLabel = false;
@@ -960,6 +1038,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             const rectProps = document.getElementById('rectangleProperties');
             const connProps = document.getElementById('connectionProperties');
             const nameInput = document.getElementById('rectName');
+            const descriptionInput = document.getElementById('rectDescription');
+            const payloadInput = document.getElementById('rectPayload');
             
             // Configure for rectangle editing
             title.textContent = 'Edit Rectangle Properties';
@@ -968,6 +1048,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             
             // Set current values
             nameInput.value = rectangle.name || '';
+            descriptionInput.value = rectangle.description || '';
+            payloadInput.value = rectangle.payload || '';
             
             // Show the dialog
             propertyEditor.style.display = 'flex';
@@ -1003,7 +1085,11 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         function saveProperties() {
             if (currentEditingRect) {
                 const nameInput = document.getElementById('rectName');
+                const descriptionInput = document.getElementById('rectDescription');
+                const payloadInput = document.getElementById('rectPayload');
                 currentEditingRect.name = nameInput.value;
+                currentEditingRect.description = descriptionInput.value;
+                currentEditingRect.payload = payloadInput.value;
                 notifyDataChanged();
                 draw();
             } else if (currentEditingConnection) {
@@ -1228,6 +1314,25 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 }
                 
                 ctx.restore();
+            }
+            
+            // Handle tooltip display
+            updateTooltip(x, y, screenX, screenY);
+        }
+        
+        function updateTooltip(worldX, worldY, screenX, screenY) {
+            const tooltip = document.getElementById('tooltip');
+            
+            // Find rectangle under cursor
+            const hoveredRect = rectangles.find(r => r.contains(worldX, worldY));
+            
+            if (hoveredRect && hoveredRect.description && hoveredRect.description.trim() !== '') {
+                tooltip.textContent = hoveredRect.description;
+                tooltip.style.display = 'block';
+                tooltip.style.left = (screenX + 10) + 'px';
+                tooltip.style.top = (screenY - 30) + 'px';
+            } else {
+                tooltip.style.display = 'none';
             }
         }
         
