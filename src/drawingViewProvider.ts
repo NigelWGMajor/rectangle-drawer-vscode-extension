@@ -350,6 +350,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         <div>• <strong>Right-click rectangles or connections to delete</strong></div>
         <div>• <strong>Middle-click and drag to pan</strong></div>
         <div>• <strong>Mouse wheel to zoom in/out</strong></div>
+        <div>• <strong>All elements snap to 10px grid</strong></div>
         <div>• Save/Load remembers last used folder</div>
     </div>
 
@@ -395,7 +396,10 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         }
         
         // Initial setup with multiple attempts to ensure proper sizing
-        setTimeout(resizeCanvas, 100);
+        setTimeout(() => {
+            resizeCanvas();
+            updateZoomDisplay();
+        }, 100);
         setTimeout(resizeCanvas, 300);
         setTimeout(resizeCanvas, 500);
         
@@ -423,13 +427,20 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         let panStartX = 0;
         let panStartY = 0;
         
+        // Grid settings
+        const gridSize = 10;
+        
+        function snapToGrid(value) {
+            return Math.round(value / gridSize) * gridSize;
+        }
+        
         // Rectangle class
         class Rectangle {
             constructor(x, y, width, height) {
-                this.x = x;
-                this.y = y;
-                this.width = width;
-                this.height = height;
+                this.x = snapToGrid(x);
+                this.y = snapToGrid(y);
+                this.width = snapToGrid(Math.max(width, gridSize));
+                this.height = snapToGrid(Math.max(height, gridSize));
                 this.selected = false;
                 this.id = Math.random().toString(36).substr(2, 9);
             }
@@ -464,50 +475,57 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 const deltaX = newX - startX;
                 const deltaY = newY - startY;
                 
+                let newLeft = this.x;
+                let newTop = this.y;
+                let newWidth = this.width;
+                let newHeight = this.height;
+                
                 switch (handle) {
                     case 'top-left':
-                        this.width -= deltaX;
-                        this.height -= deltaY;
-                        this.x += deltaX;
-                        this.y += deltaY;
+                        newWidth = this.width - deltaX;
+                        newHeight = this.height - deltaY;
+                        newLeft = this.x + deltaX;
+                        newTop = this.y + deltaY;
                         break;
                     case 'top-right':
-                        this.width += deltaX;
-                        this.height -= deltaY;
-                        this.y += deltaY;
+                        newWidth = this.width + deltaX;
+                        newHeight = this.height - deltaY;
+                        newTop = this.y + deltaY;
                         break;
                     case 'bottom-left':
-                        this.width -= deltaX;
-                        this.height += deltaY;
-                        this.x += deltaX;
+                        newWidth = this.width - deltaX;
+                        newHeight = this.height + deltaY;
+                        newLeft = this.x + deltaX;
                         break;
                     case 'bottom-right':
-                        this.width += deltaX;
-                        this.height += deltaY;
+                        newWidth = this.width + deltaX;
+                        newHeight = this.height + deltaY;
                         break;
                     case 'top':
-                        this.height -= deltaY;
-                        this.y += deltaY;
+                        newHeight = this.height - deltaY;
+                        newTop = this.y + deltaY;
                         break;
                     case 'bottom':
-                        this.height += deltaY;
+                        newHeight = this.height + deltaY;
                         break;
                     case 'left':
-                        this.width -= deltaX;
-                        this.x += deltaX;
+                        newWidth = this.width - deltaX;
+                        newLeft = this.x + deltaX;
                         break;
                     case 'right':
-                        this.width += deltaX;
+                        newWidth = this.width + deltaX;
                         break;
                 }
                 
                 // Ensure minimum size
-                if (this.width < 20) {
-                    this.width = 20;
-                }
-                if (this.height < 20) {
-                    this.height = 20;
-                }
+                newWidth = Math.max(newWidth, gridSize);
+                newHeight = Math.max(newHeight, gridSize);
+                
+                // Apply the values
+                this.x = newLeft;
+                this.y = newTop;
+                this.width = newWidth;
+                this.height = newHeight;
             }
             
             getConnectionPoints() {
@@ -557,16 +575,16 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             
             getSnapPoint(rect, otherRect, direction) {
                 if (direction === 'from') {
-                    // Snap to right edge of source rectangle
+                    // Snap to right edge of source rectangle (already grid-aligned)
                     return {
                         x: rect.x + rect.width,
-                        y: rect.y + rect.height / 2
+                        y: snapToGrid(rect.y + rect.height / 2)
                     };
                 } else {
-                    // Snap to left edge of target rectangle
+                    // Snap to left edge of target rectangle (already grid-aligned)
                     return {
                         x: rect.x,
-                        y: rect.y + rect.height / 2
+                        y: snapToGrid(rect.y + rect.height / 2)
                     };
                 }
             }
@@ -759,9 +777,9 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     clickedConnection.selected = true;
                     selectedRect = null;
                 } else {
-                    // Start drawing new rectangle
+                    // Start drawing new rectangle with snapped start point
                     isDrawing = true;
-                    startPoint = { x, y };
+                    startPoint = { x: snapToGrid(x), y: snapToGrid(y) };
                     dragStartX = x;
                     dragStartY = y;
                     selectedRect = null;
@@ -775,8 +793,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     isConnecting = true;
                     startPoint = {
                         rect: clickedRect,
-                        x: clickedRect.x + clickedRect.width, // Right edge
-                        y: clickedRect.y + clickedRect.height / 2 // Middle of right edge
+                        x: clickedRect.x + clickedRect.width, // Right edge (already grid-aligned)
+                        y: snapToGrid(clickedRect.y + clickedRect.height / 2) // Middle of right edge
                     };
                 }
             }
@@ -814,15 +832,20 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             }
             
             if (isDrawing && startPoint) {
+                const snappedX = snapToGrid(Math.min(startPoint.x, x));
+                const snappedY = snapToGrid(Math.min(startPoint.y, y));
+                const snappedWidth = snapToGrid(Math.abs(x - startPoint.x));
+                const snappedHeight = snapToGrid(Math.abs(y - startPoint.y));
+                
                 currentRect = {
-                    x: Math.min(startPoint.x, x),
-                    y: Math.min(startPoint.y, y),
-                    width: Math.abs(x - startPoint.x),
-                    height: Math.abs(y - startPoint.y)
+                    x: snappedX,
+                    y: snappedY,
+                    width: snappedWidth,
+                    height: snappedHeight
                 };
                 draw();
             } else if (isDragging && selectedRect) {
-                // Move the rectangle
+                // Move the rectangle smoothly without snapping
                 selectedRect.x = x - dragOffset.x;
                 selectedRect.y = y - dragOffset.y;
                 draw();
@@ -901,7 +924,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             const x = (screenX - panX) / zoom;
             const y = (screenY - panY) / zoom;
             
-            if (isDrawing && currentRect && currentRect.width > 5 && currentRect.height > 5) {
+            if (isDrawing && currentRect && currentRect.width >= gridSize && currentRect.height >= gridSize) {
                 const newRect = new Rectangle(
                     currentRect.x,
                     currentRect.y,
@@ -915,10 +938,10 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             if (isConnecting && startPoint) {
                 const targetRect = rectangles.find(r => r.contains(x, y) && r !== startPoint.rect);
                 if (targetRect) {
-                    // Create connection with edge snapping
+                    // Create connection with grid-aligned edge snapping
                     const endPoint = {
-                        x: targetRect.x, // Left edge
-                        y: targetRect.y + targetRect.height / 2 // Middle of left edge
+                        x: targetRect.x, // Left edge (already grid-aligned)
+                        y: snapToGrid(targetRect.y + targetRect.height / 2) // Middle of left edge
                     };
                     
                     const connection = new Connection(
@@ -934,6 +957,13 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             
             // Notify of changes if we were dragging or resizing
             if (isDragging || isResizing) {
+                // Apply grid snapping when drag/resize is complete
+                if (selectedRect) {
+                    selectedRect.x = snapToGrid(selectedRect.x);
+                    selectedRect.y = snapToGrid(selectedRect.y);
+                    selectedRect.width = Math.max(snapToGrid(selectedRect.width), gridSize);
+                    selectedRect.height = Math.max(snapToGrid(selectedRect.height), gridSize);
+                }
                 notifyDataChanged();
             }
             

@@ -1,0 +1,61 @@
+{
+  "version": "1.0",
+  "created": "2025-10-09T18:13:19.901Z",
+  "rectangles": [
+    {
+      "x": -79.37990823406898,
+      "y": 192.43463794721853,
+      "width": 104,
+      "height": 63,
+      "id": "cosuwdbk6"
+    },
+    {
+      "x": 110.23524250968057,
+      "y": 41.48935904969147,
+      "width": 126,
+      "height": 79,
+      "id": "80li2kitd"
+    },
+    {
+      "x": 319.0331128075235,
+      "y": 92.84078867930877,
+      "width": 153.18668408885839,
+      "height": 72.69876533030563,
+      "id": "xbjc7f8hn"
+    },
+    {
+      "x": 579.9697526537991,
+      "y": 169.43413072373795,
+      "width": 160.97583751710533,
+      "height": 99.96080232917025,
+      "id": "tknx1xrz8"
+    }
+  ],
+  "connections": [
+    {
+      "fromRectId": "cosuwdbk6",
+      "toRectId": "80li2kitd",
+      "id": "tqfdt80sq"
+    },
+    {
+      "fromRectId": "80li2kitd",
+      "toRectId": "xbjc7f8hn",
+      "id": "wxctm4wyp"
+    },
+    {
+      "fromRectId": "cosuwdbk6",
+      "toRectId": "xbjc7f8hn",
+      "id": "8k10p60zd"
+    },
+    {
+      "fromRectId": "xbjc7f8hn",
+      "toRectId": "tknx1xrz8",
+      "id": "klznvvv1q"
+    },
+    {
+      "fromRectId": "cosuwdbk6",
+      "toRectId": "tknx1xrz8",
+      "id": "8abj5prkx"
+    }
+  ]
+}
