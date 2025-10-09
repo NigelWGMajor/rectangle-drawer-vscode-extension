@@ -14,7 +14,7 @@ export function activate(context: vscode.ExtensionContext) {
         )
     );
 
-    // Register command to open drawing view
+    // Register command to open drawing view in panel (optional)
     const openDrawingCommand = vscode.commands.registerCommand(
         'rectangleDrawer.openDrawingView',
         () => {

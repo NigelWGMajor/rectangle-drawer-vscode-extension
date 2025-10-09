@@ -19,21 +19,22 @@
         "category": "Rectangle Drawer"
       }
     ],
-    "views": {
-      "explorer": [
-        {
-          "id": "rectangleDrawerView",
-          "name": "Rectangle Drawer",
-          "when": "true"
-        }
-      ]
-    },
     "viewsContainers": {
       "activitybar": [
         {
           "id": "rectangleDrawer",
           "title": "Rectangle Drawer",
-          "icon": "$(symbol-square)"
+          "icon": "$(selection)"
+        }
+      ]
+    },
+    "views": {
+      "rectangleDrawer": [
+        {
+          "id": "rectangleDrawerView",
+          "name": "Drawing Canvas",
+          "type": "webview",
+          "when": "true"
         }
       ]
     }

@@ -100,22 +100,48 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
     <style>
         body {
             margin: 0;
-            padding: 10px;
+            padding: 0;
             font-family: var(--vscode-font-family);
             background-color: var(--vscode-editor-background);
             color: var(--vscode-editor-foreground);
-        }
-        
-        #canvas {
-            border: 1px solid var(--vscode-panel-border);
-            cursor: crosshair;
-            background-color: var(--vscode-editor-background);
-            display: block;
-            margin: 10px 0;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            box-sizing: border-box;
         }
         
         .controls {
-            margin-bottom: 10px;
+            padding: 8px;
+            background-color: var(--vscode-panel-background);
+            border-bottom: 1px solid var(--vscode-panel-border);
+            flex-shrink: 0;
+            font-size: 12px;
+        }
+        
+        .controls button {
+            font-size: 11px;
+            padding: 4px 8px;
+            margin-right: 4px;
+        }
+        
+        #canvas {
+            border: none;
+            cursor: crosshair;
+            background-color: var(--vscode-editor-background);
+            flex: 1;
+            display: block;
+            width: 100%;
+            height: 100%;
+            min-height: 200px;
+        }
+        
+        .canvas-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            min-height: 0; /* Important for flex child */
         }
         
         button {
@@ -133,9 +159,18 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         }
         
         .info {
-            font-size: 12px;
-            margin-top: 10px;
+            padding: 8px;
+            font-size: 11px;
             color: var(--vscode-descriptionForeground);
+            background-color: var(--vscode-panel-background);
+            border-top: 1px solid var(--vscode-panel-border);
+            flex-shrink: 0;
+            max-height: 120px;
+            overflow-y: auto;
+        }
+        
+        .info div {
+            margin: 2px 0;
         }
         
         .context-menu {
@@ -176,7 +211,9 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         <button onclick="loadDrawing()">Load</button>
     </div>
     
-    <canvas id="canvas" width="600" height="400"></canvas>
+    <div class="canvas-container">
+        <canvas id="canvas"></canvas>
+    </div>
     
     <div id="contextMenu" class="context-menu">
         <div class="context-menu-item" onclick="deleteSelected()">Delete</div>
@@ -198,6 +235,47 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         const vscode = acquireVsCodeApi();
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
+        const canvasContainer = document.querySelector('.canvas-container');
+        
+        // Make canvas responsive
+        function resizeCanvas() {
+            const container = canvasContainer;
+            if (!container) return;
+            
+            const rect = container.getBoundingClientRect();
+            
+            // Ensure we have minimum dimensions
+            const width = Math.max(rect.width, 200);
+            const height = Math.max(rect.height, 200);
+            
+            // Set canvas size to fill container
+            canvas.width = width;
+            canvas.height = height;
+            
+            // Set CSS size to match
+            canvas.style.width = width + 'px';
+            canvas.style.height = height + 'px';
+            
+            // Redraw everything
+            draw();
+        }
+        
+        // Initial resize and setup resize listener
+        window.addEventListener('resize', resizeCanvas);
+        window.addEventListener('load', resizeCanvas);
+        
+        // Use ResizeObserver for better responsiveness
+        if (window.ResizeObserver) {
+            const resizeObserver = new ResizeObserver(entries => {
+                requestAnimationFrame(resizeCanvas);
+            });
+            resizeObserver.observe(canvasContainer);
+        }
+        
+        // Initial setup with multiple attempts to ensure proper sizing
+        setTimeout(resizeCanvas, 100);
+        setTimeout(resizeCanvas, 300);
+        setTimeout(resizeCanvas, 500);
         
         let rectangles = [];
         let connections = [];
@@ -437,6 +515,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     selectedConnection = clickedConnection;
                 }
                 
+                // Position context menu relative to viewport
                 showContextMenu(e.clientX, e.clientY);
                 draw();
             }
@@ -445,8 +524,25 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         function showContextMenu(x, y) {
             contextMenu = document.getElementById('contextMenu');
             contextMenu.style.display = 'block';
-            contextMenu.style.left = x + 'px';
-            contextMenu.style.top = y + 'px';
+            
+            // Ensure context menu stays within viewport
+            const menuRect = contextMenu.getBoundingClientRect();
+            const viewportWidth = window.innerWidth;
+            const viewportHeight = window.innerHeight;
+            
+            let menuX = x;
+            let menuY = y;
+            
+            // Adjust position if menu would go off-screen
+            if (x + menuRect.width > viewportWidth) {
+                menuX = viewportWidth - menuRect.width - 5;
+            }
+            if (y + menuRect.height > viewportHeight) {
+                menuY = viewportHeight - menuRect.height - 5;
+            }
+            
+            contextMenu.style.left = menuX + 'px';
+            contextMenu.style.top = menuY + 'px';
         }
         
         function hideContextMenu() {
