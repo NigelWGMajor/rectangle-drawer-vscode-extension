@@ -1361,8 +1361,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             if (hoveredRect && hoveredRect.description && hoveredRect.description.trim() !== '') {
                 tooltip.textContent = hoveredRect.description;
                 tooltip.style.display = 'block';
-                tooltip.style.left = (screenX + 10) + 'px';
-                tooltip.style.top = (screenY - 30) + 'px';
+                tooltip.style.left = (screenX + 15) + 'px';
+                tooltip.style.top = screenY + 'px';
             } else {
                 // If no rectangle, check for connections
                 const hoveredConnection = connections.find(c => c.isNearConnection(worldX, worldY));
@@ -1370,8 +1370,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 if (hoveredConnection && hoveredConnection.description && hoveredConnection.description.trim() !== '') {
                     tooltip.textContent = hoveredConnection.description;
                     tooltip.style.display = 'block';
-                    tooltip.style.left = (screenX + 10) + 'px';
-                    tooltip.style.top = (screenY - 30) + 'px';
+                    tooltip.style.left = (screenX + 15) + 'px';
+                    tooltip.style.top = screenY + 'px';
                 } else {
                     tooltip.style.display = 'none';
                 }
