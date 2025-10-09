@@ -1,0 +1,78 @@
+{
+  "version": "1.0",
+  "created": "2025-10-09T21:23:32.884Z",
+  "rectangles": [
+    {
+      "x": 110,
+      "y": 50,
+      "width": 110,
+      "height": 60,
+      "id": "giogrll4k",
+      "name": "A",
+      "description": "Alpha",
+      "payload": "AAA\n"
+    },
+    {
+      "x": 310,
+      "y": 50,
+      "width": 110,
+      "height": 60,
+      "id": "kloyyjtrh",
+      "name": "B",
+      "description": "Bravo",
+      "payload": "BBB\n"
+    },
+    {
+      "x": 510,
+      "y": 50,
+      "width": 110,
+      "height": 60,
+      "id": "bkf1chd45",
+      "name": "C",
+      "description": "Charlie",
+      "payload": "CCCC\n"
+    },
+    {
+      "x": 710,
+      "y": 50,
+      "width": 110,
+      "height": 60,
+      "id": "5lplcdkth",
+      "name": "D",
+      "description": "Delta",
+      "payload": "DDDD\n---eof---\n"
+    }
+  ],
+  "connections": [
+    {
+      "fromRectId": "giogrll4k",
+      "toRectId": "kloyyjtrh",
+      "id": "je3i44li4",
+      "label": "AB",
+      "description": "A to B",
+      "payload": "a->B\n",
+      "labelPosition": {
+        "x": 264,
+        "y": 80.5999984741211
+      }
+    },
+    {
+      "fromRectId": "kloyyjtrh",
+      "toRectId": "bkf1chd45",
+      "id": "1ea79jd1z",
+      "label": "BC",
+      "description": "b to c",
+      "payload": "B ----> C\n",
+      "labelPosition": null
+    },
+    {
+      "fromRectId": "bkf1chd45",
+      "toRectId": "5lplcdkth",
+      "id": "a3j2gpx3e",
+      "label": "CD",
+      "description": "C to D",
+      "payload": "C --> D\n",
+      "labelPosition": null
+    }
+  ]
+}

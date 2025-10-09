@@ -1,0 +1,61 @@
+{
+  "version": "1.0",
+  "created": "2025-10-09T21:06:21.501Z",
+  "rectangles": [
+    {
+      "x": 150,
+      "y": 100,
+      "width": 80,
+      "height": 40,
+      "id": "pdehsly9x",
+      "name": "Start"
+    },
+    {
+      "x": 150,
+      "y": 180,
+      "width": 80,
+      "height": 40,
+      "id": "je22kzjx1",
+      "name": "setup"
+    },
+    {
+      "x": 410,
+      "y": 160,
+      "width": 80,
+      "height": 40,
+      "id": "754dnjics",
+      "name": "populate"
+    },
+    {
+      "x": 520,
+      "y": 220,
+      "width": 90,
+      "height": 40,
+      "id": "d6yv1zm9d",
+      "name": ""
+    }
+  ],
+  "connections": [
+    {
+      "fromRectId": "pdehsly9x",
+      "toRectId": "je22kzjx1",
+      "id": "bs8sdkumd",
+      "label": "Next",
+      "labelPosition": null
+    },
+    {
+      "fromRectId": "je22kzjx1",
+      "toRectId": "754dnjics",
+      "id": "nt091in7w",
+      "label": "",
+      "labelPosition": null
+    },
+    {
+      "fromRectId": "754dnjics",
+      "toRectId": "d6yv1zm9d",
+      "id": "echs3gifp",
+      "label": "",
+      "labelPosition": null
+    }
+  ]
+}

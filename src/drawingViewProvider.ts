@@ -484,13 +484,21 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 </div>
                 <div class="property-field">
                     <label for="rectPayload">Payload:</label>
-                    <textarea id="rectPayload" placeholder="Enter payload data (Ctrl+C/V when selected)" rows="3"></textarea>
+                    <textarea id="rectPayload" placeholder="Enter payload data (Ctrl+C/V when selected)" rows="3" wrap="soft"></textarea>
                 </div>
             </div>
             <div id="connectionProperties" style="display: none;">
                 <div class="property-field">
                     <label for="connLabel">Label:</label>
                     <input type="text" id="connLabel" placeholder="Enter connection label">
+                </div>
+                <div class="property-field">
+                    <label for="connDescription">Description:</label>
+                    <input type="text" id="connDescription" placeholder="Enter description (shown on hover)">
+                </div>
+                <div class="property-field">
+                    <label for="connPayload">Payload:</label>
+                    <textarea id="connPayload" placeholder="Enter payload data (Ctrl+C/V when selected)" rows="3" wrap="soft"></textarea>
                 </div>
             </div>
             <div class="property-buttons">
@@ -723,7 +731,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         
         // Connection class
         class Connection {
-            constructor(fromRect, fromPoint, toRect, toPoint, label = '') {
+            constructor(fromRect, fromPoint, toRect, toPoint, label = '', description = '', payload = '') {
                 this.fromRect = fromRect;
                 this.fromPoint = fromPoint;
                 this.toRect = toRect;
@@ -731,6 +739,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 this.id = Math.random().toString(36).substr(2, 9);
                 this.selected = false;
                 this.label = label;
+                this.description = description;
+                this.payload = payload;
                 this.labelPosition = null; // Will be calculated automatically if null
                 this.isDraggingLabel = false;
             }
@@ -863,8 +873,11 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             const propertyEditor = document.getElementById('propertyEditor');
             if (propertyEditor && propertyEditor.style.display === 'flex') {
                 if (e.key === 'Enter') {
-                    e.preventDefault();
-                    saveProperties();
+                    // Only save on Enter if we're not in a textarea (allow line breaks in textareas)
+                    if (document.activeElement.tagName !== 'TEXTAREA') {
+                        e.preventDefault();
+                        saveProperties();
+                    }
                 } else if (e.key === 'Escape') {
                     e.preventDefault();
                     cancelProperties();
@@ -995,17 +1008,24 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         }
         
         function handleKeyDown(e) {
-            // Only handle Ctrl+C and Ctrl+V when a rectangle is selected and no input fields are focused
-            if (!selectedRect || document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') {
+            // Only handle Ctrl+C and Ctrl+V when something is selected and no input fields are focused
+            if ((!selectedRect && !selectedConnection) || document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') {
                 return;
             }
             
             if (e.ctrlKey || e.metaKey) { // Support both Ctrl (Windows/Linux) and Cmd (Mac)
                 if (e.key === 'c' || e.key === 'C') {
                     // Copy payload to clipboard
-                    if (selectedRect.payload && selectedRect.payload.trim() !== '') {
-                        navigator.clipboard.writeText(selectedRect.payload).then(() => {
-                            console.log('Payload copied to clipboard:', selectedRect.payload);
+                    let payload = '';
+                    if (selectedRect && selectedRect.payload) {
+                        payload = selectedRect.payload;
+                    } else if (selectedConnection && selectedConnection.payload) {
+                        payload = selectedConnection.payload;
+                    }
+                    
+                    if (payload.trim() !== '') {
+                        navigator.clipboard.writeText(payload).then(() => {
+                            console.log('Payload copied to clipboard:', payload);
                         }).catch(err => {
                             console.error('Failed to copy to clipboard:', err);
                         });
@@ -1014,7 +1034,11 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 } else if (e.key === 'v' || e.key === 'V') {
                     // Paste from clipboard to payload
                     navigator.clipboard.readText().then(text => {
-                        selectedRect.payload = text;
+                        if (selectedRect) {
+                            selectedRect.payload = text;
+                        } else if (selectedConnection) {
+                            selectedConnection.payload = text;
+                        }
                         notifyDataChanged();
                         console.log('Payload pasted from clipboard:', text);
                     }).catch(err => {
@@ -1066,6 +1090,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             const rectProps = document.getElementById('rectangleProperties');
             const connProps = document.getElementById('connectionProperties');
             const labelInput = document.getElementById('connLabel');
+            const descriptionInput = document.getElementById('connDescription');
+            const payloadInput = document.getElementById('connPayload');
             
             // Configure for connection editing
             title.textContent = 'Edit Connection Properties';
@@ -1074,6 +1100,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             
             // Set current values
             labelInput.value = connection.label || '';
+            descriptionInput.value = connection.description || '';
+            payloadInput.value = connection.payload || '';
             
             // Show the dialog
             propertyEditor.style.display = 'flex';
@@ -1094,7 +1122,11 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 draw();
             } else if (currentEditingConnection) {
                 const labelInput = document.getElementById('connLabel');
+                const descriptionInput = document.getElementById('connDescription');
+                const payloadInput = document.getElementById('connPayload');
                 currentEditingConnection.label = labelInput.value;
+                currentEditingConnection.description = descriptionInput.value;
+                currentEditingConnection.payload = payloadInput.value;
                 notifyDataChanged();
                 draw();
             }
@@ -1323,7 +1355,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         function updateTooltip(worldX, worldY, screenX, screenY) {
             const tooltip = document.getElementById('tooltip');
             
-            // Find rectangle under cursor
+            // Find rectangle under cursor first
             const hoveredRect = rectangles.find(r => r.contains(worldX, worldY));
             
             if (hoveredRect && hoveredRect.description && hoveredRect.description.trim() !== '') {
@@ -1332,7 +1364,17 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 tooltip.style.left = (screenX + 10) + 'px';
                 tooltip.style.top = (screenY - 30) + 'px';
             } else {
-                tooltip.style.display = 'none';
+                // If no rectangle, check for connections
+                const hoveredConnection = connections.find(c => c.isNearConnection(worldX, worldY));
+                
+                if (hoveredConnection && hoveredConnection.description && hoveredConnection.description.trim() !== '') {
+                    tooltip.textContent = hoveredConnection.description;
+                    tooltip.style.display = 'block';
+                    tooltip.style.left = (screenX + 10) + 'px';
+                    tooltip.style.top = (screenY - 30) + 'px';
+                } else {
+                    tooltip.style.display = 'none';
+                }
             }
         }
         
@@ -1387,7 +1429,9 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     currentRect.y,
                     currentRect.width,
                     currentRect.height,
-                    name
+                    name,
+                    '', // Empty description initially
+                    ''  // Empty payload initially
                 );
                 rectangles.push(newRect);
                 notifyDataChanged();
@@ -1427,7 +1471,9 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         newRectY,
                         sourceRect.width,
                         sourceRect.height,
-                        name
+                        name,
+                        '', // Empty description initially
+                        ''  // Empty payload initially
                     );
                     rectangles.push(newRect);
                     
@@ -1482,13 +1528,17 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     width: r.width,
                     height: r.height,
                     id: r.id,
-                    name: r.name || ''
+                    name: r.name || '',
+                    description: r.description || '',
+                    payload: r.payload || ''
                 })),
                 connections: connections.map(c => ({
                     fromRectId: c.fromRect.id,
                     toRectId: c.toRect.id,
                     id: c.id,
                     label: c.label || '',
+                    description: c.description || '',
+                    payload: c.payload || '',
                     labelPosition: c.labelPosition
                 }))
             };
@@ -1814,13 +1864,17 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     width: r.width,
                     height: r.height,
                     id: r.id,
-                    name: r.name || ''
+                    name: r.name || '',
+                    description: r.description || '',
+                    payload: r.payload || ''
                 })),
                 connections: connections.map(c => ({
                     fromRectId: c.fromRect.id,
                     toRectId: c.toRect.id,
                     id: c.id,
                     label: c.label || '',
+                    description: c.description || '',
+                    payload: c.payload || '',
                     labelPosition: c.labelPosition
                 }))
             };
@@ -1890,7 +1944,15 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     
                     // Recreate rectangles
                     data.rectangles.forEach(rectData => {
-                        const rect = new Rectangle(rectData.x, rectData.y, rectData.width, rectData.height, rectData.name || '');
+                        const rect = new Rectangle(
+                            rectData.x, 
+                            rectData.y, 
+                            rectData.width, 
+                            rectData.height, 
+                            rectData.name || '', 
+                            rectData.description || '', 
+                            rectData.payload || ''
+                        );
                         rect.id = rectData.id;
                         rectangles.push(rect);
                     });
@@ -1911,7 +1973,10 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                                 y: toRect.y + toRect.height / 2
                             };
                             
-                            const connection = new Connection(fromRect, fromPoint, toRect, toPoint, connData.label || '');
+                            const connection = new Connection(fromRect, fromPoint, toRect, toPoint, 
+                                connData.label || '', 
+                                connData.description || '', 
+                                connData.payload || '');
                             connection.id = connData.id;
                             if (connData.labelPosition) {
                                 connection.labelPosition = connData.labelPosition;
