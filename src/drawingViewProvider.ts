@@ -460,6 +460,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         <div><strong>Instructions:</strong></div>
         <div>• Left-click and drag to create rectangles</div>
         <div>• Right-click and drag to connect rectangles</div>
+        <div>• <strong>Right-drag to empty space creates new connected rectangle</strong></div>
         <div>• Click on rectangles to select them</div>
         <div>• <strong>Double-click rectangles to edit name</strong></div>
         <div>• <strong>Double-click connections to add labels</strong></div>
@@ -827,6 +828,9 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         function handleContextMenu(e) {
             e.preventDefault();
             
+            // Clear any potential connection start since we're showing context menu
+            potentialStartPoint = null;
+            
             const rect = canvas.getBoundingClientRect();
             const screenX = e.clientX - rect.left;
             const screenY = e.clientY - rect.top;
@@ -946,6 +950,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         let currentEditingRect = null;
         let currentEditingConnection = null;
         let isDraggingLabel = false;
+        let potentialStartPoint = null; // For delayed connection start
         
         function editRectangleProperties(rectangle) {
             currentEditingRect = rectangle;
@@ -1097,14 +1102,15 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     dragStartY = y;
                     selectedRect = null;
                 }
-            } else if (e.button === 2) { // Right click - only for creating connections, not context menu
-                // Only allow connection creation if not right-clicking on existing elements
+            } else if (e.button === 2) { // Right click - start connection creation from rectangles
+                // Only allow connection creation from rectangles, not on connections or empty space
                 const clickedRect = rectangles.find(r => r.contains(x, y));
                 const clickedConnection = connections.find(c => c.isNearConnection(x, y));
                 
                 if (clickedRect && !clickedConnection) {
-                    isConnecting = true;
-                    startPoint = {
+                    // Start connection creation - this will be handled if user drags
+                    // Context menu will be handled by contextmenu event if user doesn't drag
+                    potentialStartPoint = {
                         rect: clickedRect,
                         x: clickedRect.x + clickedRect.width, // Right edge (already grid-aligned)
                         y: snapToGrid(clickedRect.y + clickedRect.height / 2) // Middle of right edge
@@ -1140,6 +1146,21 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             // Convert screen coordinates to world coordinates
             const x = (screenX - panX) / zoom;
             const y = (screenY - panY) / zoom;
+            
+            // Check if we should start connection creation (user is dragging from potential start)
+            if (potentialStartPoint && !isConnecting) {
+                // Calculate distance moved to determine if this is a drag vs click
+                const startScreenX = (potentialStartPoint.x * zoom) + panX;
+                const startScreenY = (potentialStartPoint.y * zoom) + panY;
+                const distanceMoved = Math.sqrt((screenX - startScreenX) ** 2 + (screenY - startScreenY) ** 2);
+                
+                if (distanceMoved > 10) { // Threshold for drag detection
+                    // User is dragging - start connection creation
+                    isConnecting = true;
+                    startPoint = potentialStartPoint;
+                    potentialStartPoint = null;
+                }
+            }
             
             // Update cursor based on what's under the mouse
             if (selectedRect && !isDragging && !isResizing && !isDrawing && !isConnecting && !isPanning) {
@@ -1285,6 +1306,41 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     );
                     connections.push(connection);
                     notifyDataChanged();
+                } else {
+                    // No target found - create a new rectangle at the drop location
+                    const sourceRect = startPoint.rect;
+                    
+                    // Create new rectangle with same size as source, positioned at drop location
+                    const newRectX = snapToGrid(x - sourceRect.width / 2); // Center on drop point
+                    const newRectY = snapToGrid(y - sourceRect.height / 2);
+                    
+                    // Prompt for new rectangle name
+                    const name = prompt('Enter a name for the new rectangle:', '') || '';
+                    
+                    const newRect = new Rectangle(
+                        newRectX,
+                        newRectY,
+                        sourceRect.width,
+                        sourceRect.height,
+                        name
+                    );
+                    rectangles.push(newRect);
+                    
+                    // Create connection to the new rectangle
+                    const endPoint = {
+                        x: newRect.x, // Left edge
+                        y: snapToGrid(newRect.y + newRect.height / 2) // Middle of left edge
+                    };
+                    
+                    const connection = new Connection(
+                        startPoint.rect,
+                        startPoint,
+                        newRect,
+                        endPoint,
+                        '' // Empty label initially
+                    );
+                    connections.push(connection);
+                    notifyDataChanged();
                 }
             }
             
@@ -1306,6 +1362,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             isResizing = false;
             isPanning = false;
             startPoint = null;
+            potentialStartPoint = null;
             currentRect = null;
             resizeHandle = null;
             canvas.style.cursor = 'crosshair';
@@ -1610,9 +1667,11 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         }
         
         function deleteSelected() {
+            console.log('deleteSelected called', { selectedRect, selectedConnection });
             let dataChanged = false;
             
             if (selectedRect) {
+                console.log('Deleting rectangle:', selectedRect.id);
                 // Remove the rectangle and all its connections
                 const rectId = selectedRect.id;
                 rectangles = rectangles.filter(r => r.id !== rectId);
@@ -1620,6 +1679,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 selectedRect = null;
                 dataChanged = true;
             } else if (selectedConnection) {
+                console.log('Deleting connection:', selectedConnection.id);
                 // Remove the connection
                 const connId = selectedConnection.id;
                 connections = connections.filter(c => c.id !== connId);
@@ -1627,6 +1687,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 dataChanged = true;
             }
             
+            console.log('Data changed:', dataChanged);
             if (dataChanged) {
                 notifyDataChanged();
             }
