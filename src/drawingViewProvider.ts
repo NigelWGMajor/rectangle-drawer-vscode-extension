@@ -123,6 +123,10 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 // Use same directory as last save
                 const lastDir = vscode.Uri.joinPath(DrawingViewProvider.lastSaveLocation, '..');
                 defaultUri = vscode.Uri.joinPath(lastDir, 'rectangle-drawing.json');
+            } else if (DrawingViewProvider.lastLoadLocation) {
+                // Use same directory as last load if no save location
+                const lastDir = vscode.Uri.joinPath(DrawingViewProvider.lastLoadLocation, '..');
+                defaultUri = vscode.Uri.joinPath(lastDir, 'rectangle-drawing.json');
             } else {
                 defaultUri = vscode.Uri.file('rectangle-drawing.json');
             }
@@ -160,11 +164,14 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
 
     private async _loadDrawing(webview: vscode.Webview) {
         try {
-            // Determine default URI based on last load location
+            // Determine default URI based on last load or save location
             let defaultUri: vscode.Uri | undefined;
             if (DrawingViewProvider.lastLoadLocation) {
                 // Use same directory as last load
                 defaultUri = vscode.Uri.joinPath(DrawingViewProvider.lastLoadLocation, '..');
+            } else if (DrawingViewProvider.lastSaveLocation) {
+                // Use same directory as last save if no load location
+                defaultUri = vscode.Uri.joinPath(DrawingViewProvider.lastSaveLocation, '..');
             }
             
             // Show open dialog
@@ -318,6 +325,93 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             background: var(--vscode-menu-separatorBackground);
             margin: 4px 0;
         }
+        
+        .property-editor {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .property-editor-content {
+            background: var(--vscode-editor-background);
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 6px;
+            padding: 20px;
+            min-width: 300px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+        }
+        
+        .property-editor-content h3 {
+            margin: 0 0 15px 0;
+            color: var(--vscode-foreground);
+            font-size: 16px;
+        }
+        
+        .property-field {
+            margin-bottom: 15px;
+        }
+        
+        .property-field label {
+            display: block;
+            margin-bottom: 5px;
+            color: var(--vscode-foreground);
+            font-size: 13px;
+        }
+        
+        .property-field input {
+            width: 100%;
+            padding: 6px 8px;
+            background: var(--vscode-input-background);
+            border: 1px solid var(--vscode-input-border);
+            border-radius: 2px;
+            color: var(--vscode-input-foreground);
+            font-size: 13px;
+            box-sizing: border-box;
+        }
+        
+        .property-field input:focus {
+            outline: none;
+            border-color: var(--vscode-focusBorder);
+        }
+        
+        .property-buttons {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+        
+        .property-buttons button {
+            padding: 6px 12px;
+            border: 1px solid var(--vscode-button-border);
+            border-radius: 2px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        
+        .property-buttons button:first-child {
+            background: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+        }
+        
+        .property-buttons button:first-child:hover {
+            background: var(--vscode-button-hoverBackground);
+        }
+        
+        .property-buttons button:last-child {
+            background: var(--vscode-button-secondaryBackground);
+            color: var(--vscode-button-secondaryForeground);
+        }
+        
+        .property-buttons button:last-child:hover {
+            background: var(--vscode-button-secondaryHoverBackground);
+        }
     </style>
 </head>
 <body>
@@ -340,11 +434,36 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         <div class="context-menu-item" onclick="deleteSelected()">Delete</div>
     </div>
     
+    <div id="propertyEditor" class="property-editor" style="display: none;">
+        <div class="property-editor-content">
+            <h3 id="propertyEditorTitle">Edit Properties</h3>
+            <div id="rectangleProperties" style="display: none;">
+                <div class="property-field">
+                    <label for="rectName">Name:</label>
+                    <input type="text" id="rectName" placeholder="Enter rectangle name">
+                </div>
+            </div>
+            <div id="connectionProperties" style="display: none;">
+                <div class="property-field">
+                    <label for="connLabel">Label:</label>
+                    <input type="text" id="connLabel" placeholder="Enter connection label">
+                </div>
+            </div>
+            <div class="property-buttons">
+                <button onclick="saveProperties()">Save</button>
+                <button onclick="cancelProperties()">Cancel</button>
+            </div>
+        </div>
+    </div>
+    
     <div class="info">
         <div><strong>Instructions:</strong></div>
         <div>• Left-click and drag to create rectangles</div>
         <div>• Right-click and drag to connect rectangles</div>
         <div>• Click on rectangles to select them</div>
+        <div>• <strong>Double-click rectangles to edit name</strong></div>
+        <div>• <strong>Double-click connections to add labels</strong></div>
+        <div>• <strong>Drag connection labels to reposition (curves line)</strong></div>
         <div>• Drag selected rectangles to move them</div>
         <div>• Drag resize handles (white squares) to resize</div>
         <div>• <strong>Right-click rectangles or connections to delete</strong></div>
@@ -436,13 +555,14 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         
         // Rectangle class
         class Rectangle {
-            constructor(x, y, width, height) {
+            constructor(x, y, width, height, name = '') {
                 this.x = snapToGrid(x);
                 this.y = snapToGrid(y);
                 this.width = snapToGrid(Math.max(width, gridSize));
                 this.height = snapToGrid(Math.max(height, gridSize));
                 this.selected = false;
                 this.id = Math.random().toString(36).substr(2, 9);
+                this.name = name;
             }
             
             contains(x, y) {
@@ -556,13 +676,16 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         
         // Connection class
         class Connection {
-            constructor(fromRect, fromPoint, toRect, toPoint) {
+            constructor(fromRect, fromPoint, toRect, toPoint, label = '') {
                 this.fromRect = fromRect;
                 this.fromPoint = fromPoint;
                 this.toRect = toRect;
                 this.toPoint = toPoint;
                 this.id = Math.random().toString(36).substr(2, 9);
                 this.selected = false;
+                this.label = label;
+                this.labelPosition = null; // Will be calculated automatically if null
+                this.isDraggingLabel = false;
             }
             
             getConnectionPoints() {
@@ -607,26 +730,74 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             }
             
             getBezierPoint(fromX, fromY, toX, toY, t) {
-                const distance = Math.abs(toX - fromX);
-                const curveOffset = Math.min(distance * 0.5, 80);
+                if (this.labelPosition) {
+                    // Use quadratic curve through label position
+                    const labelPos = this.labelPosition;
+                    
+                    // Quadratic bezier formula: (1-t)²P0 + 2(1-t)tP1 + t²P2
+                    const x = Math.pow(1-t, 2) * fromX + 
+                             2 * (1-t) * t * labelPos.x + 
+                             Math.pow(t, 2) * toX;
+                             
+                    const y = Math.pow(1-t, 2) * fromY + 
+                             2 * (1-t) * t * labelPos.y + 
+                             Math.pow(t, 2) * toY;
+                             
+                    return { x, y };
+                } else {
+                    // Default cubic bezier curve
+                    const distance = Math.abs(toX - fromX);
+                    const curveOffset = Math.min(distance * 0.5, 80);
+                    
+                    const cp1X = fromX + curveOffset;
+                    const cp1Y = fromY;
+                    const cp2X = toX - curveOffset;
+                    const cp2Y = toY;
+                    
+                    // Bezier curve formula
+                    const x = Math.pow(1-t, 3) * fromX + 
+                             3 * Math.pow(1-t, 2) * t * cp1X + 
+                             3 * (1-t) * Math.pow(t, 2) * cp2X + 
+                             Math.pow(t, 3) * toX;
+                             
+                    const y = Math.pow(1-t, 3) * fromY + 
+                             3 * Math.pow(1-t, 2) * t * cp1Y + 
+                             3 * (1-t) * Math.pow(t, 2) * cp2Y + 
+                             Math.pow(t, 3) * toY;
+                             
+                    return { x, y };
+                }
+            }
+            
+            getLabelPosition() {
+                if (this.labelPosition) {
+                    return this.labelPosition;
+                }
                 
-                const cp1X = fromX + curveOffset;
-                const cp1Y = fromY;
-                const cp2X = toX - curveOffset;
-                const cp2Y = toY;
+                // Calculate default label position at middle of connection
+                const points = this.getConnectionPoints();
+                const fromPoint = points.from;
+                const toPoint = points.to;
                 
-                // Bezier curve formula
-                const x = Math.pow(1-t, 3) * fromX + 
-                         3 * Math.pow(1-t, 2) * t * cp1X + 
-                         3 * (1-t) * Math.pow(t, 2) * cp2X + 
-                         Math.pow(t, 3) * toX;
-                         
-                const y = Math.pow(1-t, 3) * fromY + 
-                         3 * Math.pow(1-t, 2) * t * cp1Y + 
-                         3 * (1-t) * Math.pow(t, 2) * cp2Y + 
-                         Math.pow(t, 3) * toY;
-                         
-                return { x, y };
+                // Get midpoint of bezier curve
+                return this.getBezierPoint(fromPoint.x, fromPoint.y, toPoint.x, toPoint.y, 0.5);
+            }
+            
+            setLabelPosition(x, y) {
+                this.labelPosition = { x, y };
+            }
+            
+            isLabelClicked(x, y) {
+                if (!this.label || this.label.trim() === '') return false;
+                
+                const labelPos = this.getLabelPosition();
+                const labelWidth = 60; // Approximate label box width
+                const labelHeight = 20; // Approximate label box height
+                
+                return x >= labelPos.x - labelWidth/2 && 
+                       x <= labelPos.x + labelWidth/2 &&
+                       y >= labelPos.y - labelHeight/2 && 
+                       y <= labelPos.y + labelHeight/2;
             }
         }
         
@@ -636,7 +807,22 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         canvas.addEventListener('mouseup', handleMouseUp);
         canvas.addEventListener('contextmenu', handleContextMenu);
         canvas.addEventListener('wheel', handleWheel);
+        canvas.addEventListener('dblclick', handleDoubleClick);
         document.addEventListener('click', hideContextMenu);
+        
+        // Property editor keyboard support
+        document.addEventListener('keydown', function(e) {
+            const propertyEditor = document.getElementById('propertyEditor');
+            if (propertyEditor && propertyEditor.style.display === 'flex') {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    saveProperties();
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    cancelProperties();
+                }
+            }
+        });
         
         function handleContextMenu(e) {
             e.preventDefault();
@@ -726,6 +912,111 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             draw();
         }
         
+        function handleDoubleClick(e) {
+            console.log('Double-click detected!');
+            const rect = canvas.getBoundingClientRect();
+            const screenX = e.clientX - rect.left;
+            const screenY = e.clientY - rect.top;
+            
+            // Convert screen coordinates to world coordinates
+            const x = (screenX - panX) / zoom;
+            const y = (screenY - panY) / zoom;
+            
+            // Find rectangle under mouse first
+            const clickedRect = rectangles.find(r => r.contains(x, y));
+            
+            if (clickedRect) {
+                console.log('Rectangle found for editing:', clickedRect);
+                editRectangleProperties(clickedRect);
+                return;
+            }
+            
+            // If no rectangle, check for connections
+            const clickedConnection = connections.find(c => c.isNearConnection(x, y));
+            
+            if (clickedConnection) {
+                console.log('Connection found for editing:', clickedConnection);
+                editConnectionProperties(clickedConnection);
+                return;
+            }
+            
+            console.log('No rectangle or connection found at click position');
+        }
+        
+        let currentEditingRect = null;
+        let currentEditingConnection = null;
+        let isDraggingLabel = false;
+        
+        function editRectangleProperties(rectangle) {
+            currentEditingRect = rectangle;
+            currentEditingConnection = null;
+            const propertyEditor = document.getElementById('propertyEditor');
+            const title = document.getElementById('propertyEditorTitle');
+            const rectProps = document.getElementById('rectangleProperties');
+            const connProps = document.getElementById('connectionProperties');
+            const nameInput = document.getElementById('rectName');
+            
+            // Configure for rectangle editing
+            title.textContent = 'Edit Rectangle Properties';
+            rectProps.style.display = 'block';
+            connProps.style.display = 'none';
+            
+            // Set current values
+            nameInput.value = rectangle.name || '';
+            
+            // Show the dialog
+            propertyEditor.style.display = 'flex';
+            
+            // Focus the name input
+            setTimeout(() => nameInput.focus(), 100);
+        }
+        
+        function editConnectionProperties(connection) {
+            currentEditingConnection = connection;
+            currentEditingRect = null;
+            const propertyEditor = document.getElementById('propertyEditor');
+            const title = document.getElementById('propertyEditorTitle');
+            const rectProps = document.getElementById('rectangleProperties');
+            const connProps = document.getElementById('connectionProperties');
+            const labelInput = document.getElementById('connLabel');
+            
+            // Configure for connection editing
+            title.textContent = 'Edit Connection Properties';
+            rectProps.style.display = 'none';
+            connProps.style.display = 'block';
+            
+            // Set current values
+            labelInput.value = connection.label || '';
+            
+            // Show the dialog
+            propertyEditor.style.display = 'flex';
+            
+            // Focus the label input
+            setTimeout(() => labelInput.focus(), 100);
+        }
+        
+        function saveProperties() {
+            if (currentEditingRect) {
+                const nameInput = document.getElementById('rectName');
+                currentEditingRect.name = nameInput.value;
+                notifyDataChanged();
+                draw();
+            } else if (currentEditingConnection) {
+                const labelInput = document.getElementById('connLabel');
+                currentEditingConnection.label = labelInput.value;
+                notifyDataChanged();
+                draw();
+            }
+            cancelProperties();
+        }
+        
+        function cancelProperties() {
+            const propertyEditor = document.getElementById('propertyEditor');
+            propertyEditor.style.display = 'none';
+            currentEditingRect = null;
+            currentEditingConnection = null;
+        }
+        
         function handleMouseDown(e) {
             const rect = canvas.getBoundingClientRect();
             const screenX = e.clientX - rect.left;
@@ -746,6 +1037,28 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 e.preventDefault();
                 return;
             } else if (e.button === 0) { // Left click
+                // Check if clicking on connection label first
+                let labelConnection = null;
+                for (const conn of connections) {
+                    if (conn.isLabelClicked(x, y)) {
+                        labelConnection = conn;
+                        break;
+                    }
+                }
+                
+                if (labelConnection) {
+                    // Start dragging the label
+                    isDraggingLabel = true;
+                    selectedConnection = labelConnection;
+                    // Clear other selections
+                    rectangles.forEach(r => r.selected = false);
+                    connections.forEach(c => c.selected = false);
+                    labelConnection.selected = true;
+                    selectedRect = null;
+                    draw();
+                    return;
+                }
+                
                 // Check if clicking on existing rectangle
                 const clickedRect = rectangles.find(r => r.contains(x, y));
                 const clickedConnection = connections.find(c => c.isNearConnection(x, y));
@@ -811,6 +1124,15 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             if (isPanning) {
                 panX = screenX - panStartX;
                 panY = screenY - panStartY;
+                draw();
+                return;
+            }
+            
+            // Handle label dragging
+            if (isDraggingLabel && selectedConnection) {
+                const x = (screenX - panX) / zoom;
+                const y = (screenY - panY) / zoom;
+                selectedConnection.setLabelPosition(x, y);
                 draw();
                 return;
             }
@@ -918,6 +1240,13 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 return;
             }
             
+            if (isDraggingLabel) {
+                isDraggingLabel = false;
+                notifyDataChanged();
+                canvas.style.cursor = 'crosshair';
+                return;
+            }
+            
             const rect = canvas.getBoundingClientRect();
             const screenX = e.clientX - rect.left;
             const screenY = e.clientY - rect.top;
@@ -925,11 +1254,14 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             const y = (screenY - panY) / zoom;
             
             if (isDrawing && currentRect && currentRect.width >= gridSize && currentRect.height >= gridSize) {
+                // Prompt for rectangle name
+                const name = prompt('Enter a name for this rectangle:', '') || '';
                 const newRect = new Rectangle(
                     currentRect.x,
                     currentRect.y,
                     currentRect.width,
-                    currentRect.height
+                    currentRect.height,
+                    name
                 );
                 rectangles.push(newRect);
                 notifyDataChanged();
@@ -948,7 +1280,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         startPoint.rect,
                         startPoint,
                         targetRect,
-                        endPoint
+                        endPoint,
+                        '' // Empty label initially
                     );
                     connections.push(connection);
                     notifyDataChanged();
@@ -986,12 +1319,15 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     y: r.y,
                     width: r.width,
                     height: r.height,
-                    id: r.id
+                    id: r.id,
+                    name: r.name || ''
                 })),
                 connections: connections.map(c => ({
                     fromRectId: c.fromRect.id,
                     toRectId: c.toRect.id,
-                    id: c.id
+                    id: c.id,
+                    label: c.label || '',
+                    labelPosition: c.labelPosition
                 }))
             };
             
@@ -1008,6 +1344,9 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             ctx.save();
             ctx.setTransform(zoom, 0, 0, zoom, panX, panY);
             
+            // Draw grid dots
+            drawGridDots();
+            
             // Draw connections
             connections.forEach(conn => {
                 const points = conn.getConnectionPoints();
@@ -1023,11 +1362,16 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 }
                 
                 // Draw curved line using bezier curve
-                drawCurvedConnection(fromPoint.x, fromPoint.y, toPoint.x, toPoint.y);
+                drawCurvedConnection(fromPoint.x, fromPoint.y, toPoint.x, toPoint.y, conn);
                 
                 // Draw dots at both ends
                 drawConnectionDot(fromPoint.x, fromPoint.y, conn.selected);
                 drawConnectionDot(toPoint.x, toPoint.y, conn.selected);
+                
+                // Draw connection label if it exists
+                if (conn.label && conn.label.trim() !== '') {
+                    drawConnectionLabel(conn);
+                }
             });
             
             // Draw rectangles
@@ -1044,6 +1388,11 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 
                 ctx.fillRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height);
                 ctx.strokeRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height);
+                
+                // Draw rectangle name if it exists
+                if (rectangle.name && rectangle.name.trim() !== '') {
+                    drawRectangleText(rectangle);
+                }
                 
                 // Draw connection points for selected rectangle
                 if (rectangle.selected) {
@@ -1073,21 +1422,118 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             ctx.restore();
         }
         
-        function drawCurvedConnection(fromX, fromY, toX, toY) {
-            const distance = Math.abs(toX - fromX);
-            const curveOffset = Math.min(distance * 0.5, 80); // Control how much the curve bends
+        function drawRectangleText(rectangle) {
+            if (!rectangle.name || rectangle.name.trim() === '') return;
             
+            // Set text properties
+            const fontSize = Math.max(12 / zoom, 8); // Scale font size with zoom, minimum 8px
+            ctx.font = fontSize + 'px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            
+            // Calculate text position (top center of rectangle)
+            const textX = rectangle.x + rectangle.width / 2;
+            const textY = rectangle.y + 4 / zoom; // Small padding from top edge
+            
+            // Draw text with outline for better readability without background
+            const lineWidth = Math.max(2 / zoom, 1);
+            
+            // Draw text outline (stroke)
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = lineWidth;
+            ctx.strokeText(rectangle.name, textX, textY);
+            
+            // Draw the text (fill)
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(rectangle.name, textX, textY);
+        }
+        
+        function drawConnectionLabel(connection) {
+            if (!connection.label || connection.label.trim() === '') return;
+            
+            const labelPos = connection.getLabelPosition();
+            const fontSize = Math.max(10 / zoom, 6); // Smaller font for labels
+            ctx.font = fontSize + 'px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            // Measure text for background box
+            const textMetrics = ctx.measureText(connection.label);
+            const textWidth = textMetrics.width;
+            const boxWidth = textWidth + 8 / zoom; // Padding
+            const boxHeight = fontSize + 4 / zoom; // Padding
+            
+            // Draw background box
+            ctx.fillStyle = connection.selected ? 'rgba(255, 107, 107, 0.9)' : 'rgba(78, 205, 196, 0.9)';
+            ctx.fillRect(
+                labelPos.x - boxWidth / 2,
+                labelPos.y - boxHeight / 2,
+                boxWidth,
+                boxHeight
+            );
+            
+            // Draw border
+            ctx.strokeStyle = connection.selected ? '#ff6b6b' : '#4ecdc4';
+            ctx.lineWidth = 1 / zoom;
+            ctx.strokeRect(
+                labelPos.x - boxWidth / 2,
+                labelPos.y - boxHeight / 2,
+                boxWidth,
+                boxHeight
+            );
+            
+            // Draw text
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(connection.label, labelPos.x, labelPos.y);
+        }
+        
+        function drawGridDots() {
+            // Calculate visible area in world coordinates
+            const startX = Math.floor((-panX) / zoom / gridSize) * gridSize;
+            const startY = Math.floor((-panY) / zoom / gridSize) * gridSize;
+            const endX = Math.ceil((canvas.width - panX) / zoom / gridSize) * gridSize;
+            const endY = Math.ceil((canvas.height - panY) / zoom / gridSize) * gridSize;
+            
+            // Set dot style - subtle gray dots
+            ctx.fillStyle = 'rgba(128, 128, 128, 0.3)';
+            const dotRadius = 1 / zoom; // Very small dots that scale with zoom
+            
+            // Draw dots at each grid intersection
+            for (let x = startX; x <= endX; x += gridSize) {
+                for (let y = startY; y <= endY; y += gridSize) {
+                    ctx.beginPath();
+                    ctx.arc(x, y, dotRadius, 0, 2 * Math.PI);
+                    ctx.fill();
+                }
+            }
+        }
+        
+        function drawCurvedConnection(fromX, fromY, toX, toY, connection = null) {
             ctx.beginPath();
             ctx.moveTo(fromX, fromY);
             
-            // Create a smooth curve using bezier curve
-            // Control points are offset horizontally to create a nice S-curve
-            const cp1X = fromX + curveOffset;
-            const cp1Y = fromY;
-            const cp2X = toX - curveOffset;
-            const cp2Y = toY;
+            if (connection && connection.labelPosition) {
+                // Use label position as control point for a more sophisticated curve
+                const labelPos = connection.labelPosition;
+                
+                // Create curve that goes through the label position
+                // Use quadratic curve through the label point
+                ctx.quadraticCurveTo(labelPos.x, labelPos.y, toX, toY);
+            } else {
+                // Default S-curve behavior
+                const distance = Math.abs(toX - fromX);
+                const curveOffset = Math.min(distance * 0.5, 80); // Control how much the curve bends
+                
+                // Create a smooth curve using bezier curve
+                // Control points are offset horizontally to create a nice S-curve
+                const cp1X = fromX + curveOffset;
+                const cp1Y = fromY;
+                const cp2X = toX - curveOffset;
+                const cp2Y = toY;
+                
+                ctx.bezierCurveTo(cp1X, cp1Y, cp2X, cp2Y, toX, toY);
+            }
             
-            ctx.bezierCurveTo(cp1X, cp1Y, cp2X, cp2Y, toX, toY);
             ctx.stroke();
         }
         
@@ -1189,6 +1635,11 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             draw();
         }
         
+        // Make functions globally accessible for HTML onclick handlers
+        window.deleteSelected = deleteSelected;
+        window.saveProperties = saveProperties;
+        window.cancelProperties = cancelProperties;
+        
         function saveDrawing() {
             const data = {
                 rectangles: rectangles.map(r => ({
@@ -1196,12 +1647,15 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     y: r.y,
                     width: r.width,
                     height: r.height,
-                    id: r.id
+                    id: r.id,
+                    name: r.name || ''
                 })),
                 connections: connections.map(c => ({
                     fromRectId: c.fromRect.id,
                     toRectId: c.toRect.id,
-                    id: c.id
+                    id: c.id,
+                    label: c.label || '',
+                    labelPosition: c.labelPosition
                 }))
             };
             
@@ -1225,12 +1679,15 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     y: r.y,
                     width: r.width,
                     height: r.height,
-                    id: r.id
+                    id: r.id,
+                    name: r.name || ''
                 })),
                 connections: connections.map(c => ({
                     fromRectId: c.fromRect.id,
                     toRectId: c.toRect.id,
-                    id: c.id
+                    id: c.id,
+                    label: c.label || '',
+                    labelPosition: c.labelPosition
                 }))
             };
             
@@ -1267,7 +1724,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     
                     // Recreate rectangles
                     data.rectangles.forEach(rectData => {
-                        const rect = new Rectangle(rectData.x, rectData.y, rectData.width, rectData.height);
+                        const rect = new Rectangle(rectData.x, rectData.y, rectData.width, rectData.height, rectData.name || '');
                         rect.id = rectData.id;
                         rectangles.push(rect);
                     });
@@ -1288,8 +1745,11 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                                 y: toRect.y + toRect.height / 2
                             };
                             
-                            const connection = new Connection(fromRect, fromPoint, toRect, toPoint);
+                            const connection = new Connection(fromRect, fromPoint, toRect, toPoint, connData.label || '');
                             connection.id = connData.id;
+                            if (connData.labelPosition) {
+                                connection.labelPosition = connData.labelPosition;
+                            }
                             connections.push(connection);
                         }
                     });
