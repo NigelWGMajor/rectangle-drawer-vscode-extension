@@ -137,6 +137,36 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             margin-top: 10px;
             color: var(--vscode-descriptionForeground);
         }
+        
+        .context-menu {
+            position: absolute;
+            background: var(--vscode-menu-background);
+            border: 1px solid var(--vscode-menu-border);
+            border-radius: 3px;
+            padding: 4px 0;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+            min-width: 120px;
+            display: none;
+        }
+        
+        .context-menu-item {
+            padding: 6px 12px;
+            cursor: pointer;
+            color: var(--vscode-menu-foreground);
+            font-size: 13px;
+        }
+        
+        .context-menu-item:hover {
+            background: var(--vscode-menu-selectionBackground);
+            color: var(--vscode-menu-selectionForeground);
+        }
+        
+        .context-menu-separator {
+            height: 1px;
+            background: var(--vscode-menu-separatorBackground);
+            margin: 4px 0;
+        }
     </style>
 </head>
 <body>
@@ -148,6 +178,10 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
     
     <canvas id="canvas" width="600" height="400"></canvas>
     
+    <div id="contextMenu" class="context-menu">
+        <div class="context-menu-item" onclick="deleteSelected()">Delete</div>
+    </div>
+    
     <div class="info">
         <div><strong>Instructions:</strong></div>
         <div>• Left-click and drag to create rectangles</div>
@@ -156,6 +190,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         <div>• Click on rectangles to select them</div>
         <div>• Drag selected rectangles to move them</div>
         <div>• Drag resize handles (white squares) to resize</div>
+        <div>• <strong>Right-click rectangles or connections to delete</strong></div>
         <div>• Connections automatically update when moving/resizing</div>
     </div>
 
@@ -173,10 +208,12 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         let startPoint = null;
         let currentRect = null;
         let selectedRect = null;
+        let selectedConnection = null;
         let dragStartX = 0;
         let dragStartY = 0;
         let dragOffset = { x: 0, y: 0 };
         let resizeHandle = null;
+        let contextMenu = null;
         
         // Rectangle class
         class Rectangle {
@@ -299,6 +336,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 this.toRect = toRect;
                 this.toPoint = toPoint;
                 this.id = Math.random().toString(36).substr(2, 9);
+                this.selected = false;
             }
             
             getConnectionPoints() {
@@ -324,28 +362,119 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     };
                 }
             }
+            
+            isNearConnection(x, y, tolerance = 8) {
+                const points = this.getConnectionPoints();
+                const fromPoint = points.from;
+                const toPoint = points.to;
+                
+                // Check if point is near the bezier curve
+                // Sample points along the curve and check distance
+                for (let t = 0; t <= 1; t += 0.05) {
+                    const curvePoint = this.getBezierPoint(fromPoint.x, fromPoint.y, toPoint.x, toPoint.y, t);
+                    const distance = Math.sqrt((x - curvePoint.x) ** 2 + (y - curvePoint.y) ** 2);
+                    if (distance <= tolerance) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+            
+            getBezierPoint(fromX, fromY, toX, toY, t) {
+                const distance = Math.abs(toX - fromX);
+                const curveOffset = Math.min(distance * 0.5, 80);
+                
+                const cp1X = fromX + curveOffset;
+                const cp1Y = fromY;
+                const cp2X = toX - curveOffset;
+                const cp2Y = toY;
+                
+                // Bezier curve formula
+                const x = Math.pow(1-t, 3) * fromX + 
+                         3 * Math.pow(1-t, 2) * t * cp1X + 
+                         3 * (1-t) * Math.pow(t, 2) * cp2X + 
+                         Math.pow(t, 3) * toX;
+                         
+                const y = Math.pow(1-t, 3) * fromY + 
+                         3 * Math.pow(1-t, 2) * t * cp1Y + 
+                         3 * (1-t) * Math.pow(t, 2) * cp2Y + 
+                         Math.pow(t, 3) * toY;
+                         
+                return { x, y };
+            }
         }
         
         // Event handlers
         canvas.addEventListener('mousedown', handleMouseDown);
         canvas.addEventListener('mousemove', handleMouseMove);
         canvas.addEventListener('mouseup', handleMouseUp);
-        canvas.addEventListener('contextmenu', e => e.preventDefault());
+        canvas.addEventListener('contextmenu', handleContextMenu);
+        document.addEventListener('click', hideContextMenu);
+        
+        function handleContextMenu(e) {
+            e.preventDefault();
+            
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            // Check what was right-clicked
+            const clickedRect = rectangles.find(r => r.contains(x, y));
+            const clickedConnection = connections.find(c => c.isNearConnection(x, y));
+            
+            if (clickedRect || clickedConnection) {
+                // Clear previous selections
+                rectangles.forEach(r => r.selected = false);
+                connections.forEach(c => c.selected = false);
+                selectedRect = null;
+                selectedConnection = null;
+                
+                if (clickedRect) {
+                    clickedRect.selected = true;
+                    selectedRect = clickedRect;
+                } else if (clickedConnection) {
+                    clickedConnection.selected = true;
+                    selectedConnection = clickedConnection;
+                }
+                
+                showContextMenu(e.clientX, e.clientY);
+                draw();
+            }
+        }
+        
+        function showContextMenu(x, y) {
+            contextMenu = document.getElementById('contextMenu');
+            contextMenu.style.display = 'block';
+            contextMenu.style.left = x + 'px';
+            contextMenu.style.top = y + 'px';
+        }
+        
+        function hideContextMenu() {
+            if (contextMenu) {
+                contextMenu.style.display = 'none';
+            }
+        }
         
         function handleMouseDown(e) {
             const rect = canvas.getBoundingClientRect();
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
             
+            // Hide context menu if visible
+            hideContextMenu();
+            
             if (e.button === 0) { // Left click
                 // Check if clicking on existing rectangle
                 const clickedRect = rectangles.find(r => r.contains(x, y));
+                const clickedConnection = connections.find(c => c.isNearConnection(x, y));
+                
+                // Clear all selections first
+                rectangles.forEach(r => r.selected = false);
+                connections.forEach(c => c.selected = false);
+                selectedConnection = null;
                 
                 if (clickedRect) {
                     selectedRect = clickedRect;
-                    // Clear all selections first
-                    rectangles.forEach(r => r.selected = false);
-                    // Select clicked rectangle
                     clickedRect.selected = true;
                     
                     // Check if clicking on resize handle
@@ -361,20 +490,24 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         dragOffset.x = x - clickedRect.x;
                         dragOffset.y = y - clickedRect.y;
                     }
+                } else if (clickedConnection) {
+                    selectedConnection = clickedConnection;
+                    clickedConnection.selected = true;
+                    selectedRect = null;
                 } else {
                     // Start drawing new rectangle
                     isDrawing = true;
                     startPoint = { x, y };
                     dragStartX = x;
                     dragStartY = y;
-                    // Clear all selections
-                    rectangles.forEach(r => r.selected = false);
                     selectedRect = null;
                 }
-            } else if (e.button === 2) { // Right click
-                // Start connecting
+            } else if (e.button === 2) { // Right click - only for creating connections, not context menu
+                // Only allow connection creation if not right-clicking on existing elements
                 const clickedRect = rectangles.find(r => r.contains(x, y));
-                if (clickedRect) {
+                const clickedConnection = connections.find(c => c.isNearConnection(x, y));
+                
+                if (clickedRect && !clickedConnection) {
                     isConnecting = true;
                     startPoint = {
                         rect: clickedRect,
@@ -527,15 +660,20 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 const fromPoint = points.from;
                 const toPoint = points.to;
                 
-                ctx.strokeStyle = '#4ecdc4';
-                ctx.lineWidth = 2;
+                if (conn.selected) {
+                    ctx.strokeStyle = '#ff6b6b';
+                    ctx.lineWidth = 3;
+                } else {
+                    ctx.strokeStyle = '#4ecdc4';
+                    ctx.lineWidth = 2;
+                }
                 
                 // Draw curved line using bezier curve
                 drawCurvedConnection(fromPoint.x, fromPoint.y, toPoint.x, toPoint.y);
                 
                 // Draw dots at both ends
-                drawConnectionDot(fromPoint.x, fromPoint.y);
-                drawConnectionDot(toPoint.x, toPoint.y);
+                drawConnectionDot(fromPoint.x, fromPoint.y, conn.selected);
+                drawConnectionDot(toPoint.x, toPoint.y, conn.selected);
             });
             
             // Draw rectangles
@@ -596,8 +734,13 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             ctx.stroke();
         }
         
-        function drawConnectionDot(x, y) {
-            ctx.fillStyle = '#4ecdc4';
+        function drawConnectionDot(x, y, selected = false) {
+            if (selected) {
+                ctx.fillStyle = '#ff6b6b';
+            } else {
+                ctx.fillStyle = '#4ecdc4';
+            }
+            
             ctx.beginPath();
             ctx.arc(x, y, 4, 0, 2 * Math.PI);
             ctx.fill();
@@ -657,6 +800,25 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             rectangles = [];
             connections = [];
             selectedRect = null;
+            selectedConnection = null;
+            draw();
+        }
+        
+        function deleteSelected() {
+            if (selectedRect) {
+                // Remove the rectangle and all its connections
+                const rectId = selectedRect.id;
+                rectangles = rectangles.filter(r => r.id !== rectId);
+                connections = connections.filter(c => c.fromRect.id !== rectId && c.toRect.id !== rectId);
+                selectedRect = null;
+            } else if (selectedConnection) {
+                // Remove the connection
+                const connId = selectedConnection.id;
+                connections = connections.filter(c => c.id !== connId);
+                selectedConnection = null;
+            }
+            
+            hideContextMenu();
             draw();
         }
         
