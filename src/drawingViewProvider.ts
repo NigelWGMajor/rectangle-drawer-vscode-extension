@@ -1309,12 +1309,20 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 // Move the rectangle smoothly without snapping
                 selectedRect.x = x - dragOffset.x;
                 selectedRect.y = y - dragOffset.y;
+                
+                // Reset label positions for connections involving this rectangle
+                resetLabelPositionsForRectangle(selectedRect);
+                
                 draw();
             } else if (isResizing && selectedRect && resizeHandle) {
                 // Resize the rectangle
                 selectedRect.resize(resizeHandle, x, y, dragStartX, dragStartY);
                 dragStartX = x;
                 dragStartY = y;
+                
+                // Reset label positions for connections involving this rectangle
+                resetLabelPositionsForRectangle(selectedRect);
+                
                 draw();
             } else if (isConnecting && startPoint) {
                 draw();
@@ -1588,18 +1596,59 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             
             // Draw rectangles
             rectangles.forEach(rectangle => {
+                // Check which edges have connections
+                const hasLeftConnections = connections.some(c => c.toRect === rectangle);
+                const hasRightConnections = connections.some(c => c.fromRect === rectangle);
+                
                 if (rectangle.selected) {
                     ctx.fillStyle = 'rgba(100, 150, 255, 0.3)';
                     ctx.strokeStyle = '#6496ff';
-                    ctx.lineWidth = 2 / zoom; // Adjust line width for zoom
                 } else {
                     ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
                     ctx.strokeStyle = '#ffffff';
-                    ctx.lineWidth = 1 / zoom; // Adjust line width for zoom
                 }
                 
+                // Fill the rectangle
                 ctx.fillRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height);
-                ctx.strokeRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height);
+                
+                // Draw rectangle outline with variable thickness
+                if (hasLeftConnections || hasRightConnections) {
+                    // Draw each edge separately with appropriate thickness
+                    const normalWidth = rectangle.selected ? 2 / zoom : 1 / zoom;
+                    const thickWidth = 5 / zoom; // 25% thicker than connection dot radius (4 * 1.25 = 5)
+                    
+                    ctx.beginPath();
+                    
+                    // Left edge (incoming connections)
+                    ctx.lineWidth = hasLeftConnections ? thickWidth : normalWidth;
+                    ctx.beginPath();
+                    ctx.moveTo(rectangle.x, rectangle.y);
+                    ctx.lineTo(rectangle.x, rectangle.y + rectangle.height);
+                    ctx.stroke();
+                    
+                    // Right edge (outgoing connections)
+                    ctx.lineWidth = hasRightConnections ? thickWidth : normalWidth;
+                    ctx.beginPath();
+                    ctx.moveTo(rectangle.x + rectangle.width, rectangle.y);
+                    ctx.lineTo(rectangle.x + rectangle.width, rectangle.y + rectangle.height);
+                    ctx.stroke();
+                    
+                    // Top and bottom edges (normal thickness)
+                    ctx.lineWidth = normalWidth;
+                    ctx.beginPath();
+                    ctx.moveTo(rectangle.x, rectangle.y);
+                    ctx.lineTo(rectangle.x + rectangle.width, rectangle.y);
+                    ctx.stroke();
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(rectangle.x, rectangle.y + rectangle.height);
+                    ctx.lineTo(rectangle.x + rectangle.width, rectangle.y + rectangle.height);
+                    ctx.stroke();
+                } else {
+                    // No connections, draw normal outline
+                    ctx.lineWidth = rectangle.selected ? 2 / zoom : 1 / zoom;
+                    ctx.strokeRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height);
+                }
                 
                 // Draw rectangle name if it exists
                 if (rectangle.name && rectangle.name.trim() !== '') {
@@ -1720,32 +1769,31 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             }
         }
         
+        function resetLabelPositionsForRectangle(rectangle) {
+            // Find all connections that involve this rectangle
+            connections.forEach(connection => {
+                if (connection.fromRect === rectangle || connection.toRect === rectangle) {
+                    // Reset the label position to null so it will be automatically positioned on the curve
+                    connection.labelPosition = null;
+                }
+            });
+        }
+        
         function drawCurvedConnection(fromX, fromY, toX, toY, connection = null) {
             ctx.beginPath();
             ctx.moveTo(fromX, fromY);
             
-            if (connection && connection.labelPosition) {
-                // Use label position as control point for a more sophisticated curve
-                const labelPos = connection.labelPosition;
-                
-                // Create curve that goes through the label position
-                // Use quadratic curve through the label point
-                ctx.quadraticCurveTo(labelPos.x, labelPos.y, toX, toY);
-            } else {
-                // Default S-curve behavior
-                const distance = Math.abs(toX - fromX);
-                const curveOffset = Math.min(distance * 0.5, 80); // Control how much the curve bends
-                
-                // Create a smooth curve using bezier curve
-                // Control points are offset horizontally to create a nice S-curve
-                const cp1X = fromX + curveOffset;
-                const cp1Y = fromY;
-                const cp2X = toX - curveOffset;
-                const cp2Y = toY;
-                
-                ctx.bezierCurveTo(cp1X, cp1Y, cp2X, cp2Y, toX, toY);
-            }
+            // Always use horizontal Bézier curves for consistent orthogonal behavior
+            const distance = Math.abs(toX - fromX);
+            const curveOffset = Math.min(distance * 0.5, 80); // Control how much the curve bends
             
+            // Create a smooth curve using bezier curve with horizontal tangents
+            const cp1X = fromX + curveOffset;
+            const cp1Y = fromY;
+            const cp2X = toX - curveOffset;
+            const cp2Y = toY;
+            
+            ctx.bezierCurveTo(cp1X, cp1Y, cp2X, cp2Y, toX, toY);
             ctx.stroke();
         }
         
