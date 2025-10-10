@@ -1072,10 +1072,34 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             }
             
             if (payloadRect && tooltip) {
+                console.log('Showing payload tooltip:', payloadRect.payload.substring(0, 50) + '...');
+                console.log('Tooltip element:', tooltip);
+                
+                // Position tooltip directly below the red dot
+                const indicatorSize = 6 / zoom;
+                const dotX = payloadRect.x + indicatorSize + 2 / zoom;
+                const dotY = payloadRect.y + payloadRect.height - indicatorSize - 2 / zoom;
+                const dotScreenX = (dotX * zoom) + panX;
+                const dotScreenY = (dotY * zoom) + panY + 15; // Just below the dot
+                
                 tooltip.textContent = payloadRect.payload;
                 tooltip.style.display = 'block';
-                tooltip.style.left = (screenX + 15) + 'px';
-                tooltip.style.top = screenY + 'px';
+                tooltip.style.left = dotScreenX + 'px';
+                tooltip.style.top = dotScreenY + 'px';
+                tooltip.style.backgroundColor = '#1e3a5f';
+                tooltip.style.color = '#00ffff';
+                tooltip.style.fontFamily = 'Consolas, "Courier New", monospace';
+                tooltip.style.fontSize = '11px';
+                tooltip.style.maxWidth = '400px';
+                tooltip.style.whiteSpace = 'pre-wrap';
+                tooltip.style.border = '1px solid #555';
+                tooltip.style.borderRadius = '4px';
+                tooltip.style.padding = '8px';
+                tooltip.style.lineHeight = '1.3';
+                console.log('Tooltip positioned at:', dotScreenX, dotScreenY);
+                
+                // Important: Return early to prevent rectangle tooltip logic from running
+                return;
             } else {
                 console.log('No payload, checking regular tooltips');
                 // Reset cursor when not hovering over payload
@@ -1087,6 +1111,17 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     tooltip.style.display = 'block';
                     tooltip.style.left = (screenX + 15) + 'px';
                     tooltip.style.top = screenY + 'px';
+                    // Reset payload tooltip styling
+                    tooltip.style.backgroundColor = '';
+                    tooltip.style.color = '';
+                    tooltip.style.fontFamily = '';
+                    tooltip.style.fontSize = '';
+                    tooltip.style.maxWidth = '';
+                    tooltip.style.whiteSpace = '';
+                    tooltip.style.border = '';
+                    tooltip.style.borderRadius = '';
+                    tooltip.style.padding = '';
+                    tooltip.style.lineHeight = '';
                 } else {
                     const hoveredConnection = connections.find(c => c.isNearConnection(x, y));
                     if (hoveredConnection && hoveredConnection.description && hoveredConnection.description.trim() !== '' && tooltip) {
@@ -2894,13 +2929,34 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 
                 // Show payload tooltip
                 if (payloadTooltipRect) {
+                    console.log('Showing panel payload tooltip:', payloadTooltipRect.payload.substring(0, 50) + '...');
                     const tooltip = document.getElementById('tooltip');
+                    console.log('Panel tooltip element:', tooltip);
                     if (tooltip) {
+                        // Position tooltip directly below the red dot
+                        const indicatorSize = 6 / zoom;
+                        const dotX = payloadTooltipRect.x + indicatorSize + 2 / zoom;
+                        const dotY = payloadTooltipRect.y + payloadTooltipRect.height - indicatorSize - 2 / zoom;
+                        const dotScreenX = (dotX * zoom) + panX;
+                        const dotScreenY = (dotY * zoom) + panY + 15; // Just below the dot
+                        
                         tooltip.textContent = payloadTooltipRect.payload;
                         tooltip.style.display = 'block';
-                        tooltip.style.left = (screenX + 15) + 'px';
-                        tooltip.style.top = screenY + 'px';
+                        tooltip.style.left = dotScreenX + 'px';
+                        tooltip.style.top = dotScreenY + 'px';
+                        tooltip.style.backgroundColor = '#1e3a5f';
+                        tooltip.style.color = '#00ffff';
+                        tooltip.style.fontFamily = 'Consolas, "Courier New", monospace';
+                        tooltip.style.fontSize = '11px';
+                        tooltip.style.maxWidth = '400px';
+                        tooltip.style.whiteSpace = 'pre-wrap';
+                        tooltip.style.border = '1px solid #555';
+                        tooltip.style.borderRadius = '4px';
+                        tooltip.style.padding = '8px';
+                        tooltip.style.lineHeight = '1.3';
+                        console.log('Panel tooltip positioned at:', dotScreenX, dotScreenY);
                     }
+                    return; // Early return to prevent regular tooltip logic
                 } else {
                     // Reset cursor when not over payload indicator
                     if (canvas.style.cursor === 'pointer') {
@@ -2916,6 +2972,17 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                             tooltip.style.display = 'block';
                             tooltip.style.left = (screenX + 15) + 'px';
                             tooltip.style.top = screenY + 'px';
+                            // Reset payload tooltip styling
+                            tooltip.style.backgroundColor = '';
+                            tooltip.style.color = '';
+                            tooltip.style.fontFamily = '';
+                            tooltip.style.fontSize = '';
+                            tooltip.style.maxWidth = '';
+                            tooltip.style.whiteSpace = '';
+                            tooltip.style.border = '';
+                            tooltip.style.borderRadius = '';
+                            tooltip.style.padding = '';
+                            tooltip.style.lineHeight = '';
                         }
                     } else {
                         const hoveredConnection = connections.find(c => c.isNearConnection(x, y));
@@ -2926,6 +2993,17 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                                 tooltip.style.display = 'block';
                                 tooltip.style.left = (screenX + 15) + 'px';
                                 tooltip.style.top = screenY + 'px';
+                                // Reset payload tooltip styling
+                                tooltip.style.backgroundColor = '';
+                                tooltip.style.color = '';
+                                tooltip.style.fontFamily = '';
+                                tooltip.style.fontSize = '';
+                                tooltip.style.maxWidth = '';
+                                tooltip.style.whiteSpace = '';
+                                tooltip.style.border = '';
+                                tooltip.style.borderRadius = '';
+                                tooltip.style.padding = '';
+                                tooltip.style.lineHeight = '';
                             }
                         } else {
                             const tooltip = document.getElementById('tooltip');
