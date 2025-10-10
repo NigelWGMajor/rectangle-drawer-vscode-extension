@@ -477,6 +477,23 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             ctx.fillText(rectangle.name, centerX, centerY);
         }
         
+        // Helper function to determine if text should be black or white for best contrast
+        function getContrastColor(backgroundColor) {
+            // Remove # if present
+            const hex = backgroundColor.replace('#', '');
+            
+            // Convert to RGB
+            const r = parseInt(hex.substr(0, 2), 16);
+            const g = parseInt(hex.substr(2, 2), 16);
+            const b = parseInt(hex.substr(4, 2), 16);
+            
+            // Calculate luminance using relative luminance formula
+            const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+            
+            // Return black for light colors, white for dark colors
+            return luminance > 0.5 ? '#000000' : '#ffffff';
+        }
+        
         function drawConnectionLabel(connection) {
             if (!connection.label) return;
             
@@ -489,17 +506,26 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 labelPos = getBezierPoint(points.from.x, points.from.y, points.to.x, points.to.y, 0.5);
             }
             
-            ctx.fillStyle = '#4ecdc4';
+            // Use connection color for background, or default
+            const backgroundColor = connection.color || '#4ecdc4';
+            const textColor = getContrastColor(backgroundColor);
+            
             ctx.font = (10 / zoom) + 'px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             
             const textWidth = ctx.measureText(connection.label).width + 8 / zoom;
             const textHeight = 16 / zoom;
+            const radius = textHeight / 2; // Make radius half the height for lozenge shape
             
-            ctx.fillRect(labelPos.x - textWidth/2, labelPos.y - textHeight/2, textWidth, textHeight);
+            // Draw rounded rectangle (lozenge) background
+            ctx.fillStyle = backgroundColor;
+            ctx.beginPath();
+            ctx.roundRect(labelPos.x - textWidth/2, labelPos.y - textHeight/2, textWidth, textHeight, radius);
+            ctx.fill();
             
-            ctx.fillStyle = '#ffffff';
+            // Draw text with contrasting color
+            ctx.fillStyle = textColor;
             ctx.fillText(connection.label, labelPos.x, labelPos.y);
         }
         
@@ -931,6 +957,33 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             margin: 0;
             cursor: pointer;
         }
+        
+        .color-palette {
+            display: flex;
+            gap: 4px;
+            margin-top: 5px;
+            flex-wrap: wrap;
+        }
+        
+        .color-swatch {
+            width: 24px;
+            height: 24px;
+            border: 2px solid var(--vscode-input-border);
+            border-radius: 3px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .color-swatch:hover {
+            border-color: var(--vscode-focusBorder);
+            transform: scale(1.1);
+        }
+        
+        .color-swatch.selected {
+            border-color: var(--vscode-focusBorder);
+            border-width: 3px;
+            box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+        }
     </style>
 </head>
 <body>
@@ -974,7 +1027,21 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 </div>
                 <div class="property-field">
                     <label for="rectColor">Color:</label>
-                    <input type="color" id="rectColor" value="#ffffff">
+                    <div class="color-palette" id="rectColorPalette">
+                        <div class="color-swatch" style="background-color: #000000;" data-color="#000000" title="Black"></div>
+                        <div class="color-swatch" style="background-color: #ff4444;" data-color="#ff4444" title="Red"></div>
+                        <div class="color-swatch" style="background-color: #ff8800;" data-color="#ff8800" title="Orange"></div>
+                        <div class="color-swatch" style="background-color: #ffdd00;" data-color="#ffdd00" title="Yellow"></div>
+                        <div class="color-swatch" style="background-color: #228822;" data-color="#228822" title="Green"></div>
+                        <div class="color-swatch" style="background-color: #4488ff;" data-color="#4488ff" title="Blue"></div>
+                        <div class="color-swatch" style="background-color: #8844ff;" data-color="#8844ff" title="Purple"></div>
+                        <div class="color-swatch" style="background-color: #555555;" data-color="#555555" title="Dark Gray"></div>
+                        <div class="color-swatch" style="background-color: #888888;" data-color="#888888" title="Gray"></div>
+                        <div class="color-swatch" style="background-color: #bbbbbb;" data-color="#bbbbbb" title="Light Gray"></div>
+                        <div class="color-swatch" style="background-color: #ffffff;" data-color="#ffffff" title="White"></div>
+                        <div class="color-swatch" style="background-color: #00ffff;" data-color="#00ffff" title="Cyan"></div>
+                        <div class="color-swatch" style="background-color: #ff00ff;" data-color="#ff00ff" title="Magenta"></div>
+                    </div>
                 </div>
             </div>
             <div id="connectionProperties" style="display: none;">
@@ -992,7 +1059,21 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 </div>
                 <div class="property-field">
                     <label for="connColor">Color:</label>
-                    <input type="color" id="connColor" value="#4ecdc4">
+                    <div class="color-palette" id="connColorPalette">
+                        <div class="color-swatch" style="background-color: #000000;" data-color="#000000" title="Black"></div>
+                        <div class="color-swatch" style="background-color: #ff4444;" data-color="#ff4444" title="Red"></div>
+                        <div class="color-swatch" style="background-color: #ff8800;" data-color="#ff8800" title="Orange"></div>
+                        <div class="color-swatch" style="background-color: #ffdd00;" data-color="#ffdd00" title="Yellow"></div>
+                        <div class="color-swatch" style="background-color: #228822;" data-color="#228822" title="Green"></div>
+                        <div class="color-swatch" style="background-color: #4488ff;" data-color="#4488ff" title="Blue"></div>
+                        <div class="color-swatch" style="background-color: #8844ff;" data-color="#8844ff" title="Purple"></div>
+                        <div class="color-swatch" style="background-color: #555555;" data-color="#555555" title="Dark Gray"></div>
+                        <div class="color-swatch" style="background-color: #888888;" data-color="#888888" title="Gray"></div>
+                        <div class="color-swatch" style="background-color: #bbbbbb;" data-color="#bbbbbb" title="Light Gray"></div>
+                        <div class="color-swatch" style="background-color: #ffffff;" data-color="#ffffff" title="White"></div>
+                        <div class="color-swatch" style="background-color: #00ffff;" data-color="#00ffff" title="Cyan"></div>
+                        <div class="color-swatch" style="background-color: #ff00ff;" data-color="#ff00ff" title="Magenta"></div>
+                    </div>
                 </div>
                 <div class="property-field">
                     <label>Line Style:</label>
@@ -1596,7 +1677,6 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             const nameInput = document.getElementById('rectName');
             const descriptionInput = document.getElementById('rectDescription');
             const payloadInput = document.getElementById('rectPayload');
-            const colorInput = document.getElementById('rectColor');
             
             // Configure for rectangle editing
             title.textContent = 'Edit Rectangle Properties';
@@ -1607,7 +1687,9 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             nameInput.value = rectangle.name || '';
             descriptionInput.value = rectangle.description || '';
             payloadInput.value = rectangle.payload || '';
-            colorInput.value = rectangle.color || '#ffffff';
+            
+            // Set color palette selection
+            setColorPaletteSelection('rectColorPalette', rectangle.color || '#ffffff');
             
             // Show the dialog
             propertyEditor.style.display = 'flex';
@@ -1626,7 +1708,6 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             const labelInput = document.getElementById('connLabel');
             const descriptionInput = document.getElementById('connDescription');
             const payloadInput = document.getElementById('connPayload');
-            const colorInput = document.getElementById('connColor');
             
             // Configure for connection editing
             title.textContent = 'Edit Connection Properties';
@@ -1637,7 +1718,9 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             labelInput.value = connection.label || '';
             descriptionInput.value = connection.description || '';
             payloadInput.value = connection.payload || '';
-            colorInput.value = connection.color || '#4ecdc4';
+            
+            // Set color palette selection
+            setColorPaletteSelection('connColorPalette', connection.color || '#4ecdc4');
             
             // Set line style radio buttons
             const lineStyle = connection.lineStyle || 'solid';
@@ -1657,18 +1740,16 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 const nameInput = document.getElementById('rectName');
                 const descriptionInput = document.getElementById('rectDescription');
                 const payloadInput = document.getElementById('rectPayload');
-                const colorInput = document.getElementById('rectColor');
                 currentEditingRect.name = nameInput.value;
                 currentEditingRect.description = descriptionInput.value;
                 currentEditingRect.payload = payloadInput.value;
-                currentEditingRect.color = colorInput.value;
+                currentEditingRect.color = getSelectedColorFromPalette('rectColorPalette');
                 notifyDataChanged();
                 draw();
             } else if (currentEditingConnection) {
                 const labelInput = document.getElementById('connLabel');
                 const descriptionInput = document.getElementById('connDescription');
                 const payloadInput = document.getElementById('connPayload');
-                const colorInput = document.getElementById('connColor');
                 const lineStyleRadios = document.getElementsByName('lineStyle');
                 let selectedLineStyle = 'solid';
                 for (const radio of lineStyleRadios) {
@@ -1681,7 +1762,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 currentEditingConnection.label = labelInput.value;
                 currentEditingConnection.description = descriptionInput.value;
                 currentEditingConnection.payload = payloadInput.value;
-                currentEditingConnection.color = colorInput.value;
+                currentEditingConnection.color = getSelectedColorFromPalette('connColorPalette');
                 currentEditingConnection.lineStyle = selectedLineStyle;
                 notifyDataChanged();
                 draw();
@@ -2311,6 +2392,23 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             ctx.fillText(rectangle.name, textX, textY);
         }
         
+        // Helper function to determine if text should be black or white for best contrast
+        function getContrastColor(backgroundColor) {
+            // Remove # if present
+            const hex = backgroundColor.replace('#', '');
+            
+            // Convert to RGB
+            const r = parseInt(hex.substr(0, 2), 16);
+            const g = parseInt(hex.substr(2, 2), 16);
+            const b = parseInt(hex.substr(4, 2), 16);
+            
+            // Calculate luminance using relative luminance formula
+            const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+            
+            // Return black for light colors, white for dark colors
+            return luminance > 0.5 ? '#000000' : '#ffffff';
+        }
+        
         function drawConnectionLabel(connection) {
             if (!connection.label || connection.label.trim() === '') return;
             
@@ -2325,28 +2423,39 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             const textWidth = textMetrics.width;
             const boxWidth = textWidth + 8 / zoom; // Padding
             const boxHeight = fontSize + 4 / zoom; // Padding
+            const radius = boxHeight / 2; // Make radius half the height for lozenge shape
             
-            // Draw background box
-            ctx.fillStyle = connection.selected ? 'rgba(255, 107, 107, 0.9)' : 'rgba(78, 205, 196, 0.9)';
-            ctx.fillRect(
+            // Use connection color for background (with selection override)
+            const backgroundColor = connection.selected ? '#ff6b6b' : (connection.color || '#4ecdc4');
+            const textColor = getContrastColor(backgroundColor);
+            
+            // Draw rounded rectangle (lozenge) background
+            ctx.fillStyle = backgroundColor;
+            ctx.beginPath();
+            ctx.roundRect(
                 labelPos.x - boxWidth / 2,
                 labelPos.y - boxHeight / 2,
                 boxWidth,
-                boxHeight
+                boxHeight,
+                radius
             );
+            ctx.fill();
             
-            // Draw border
-            ctx.strokeStyle = connection.selected ? '#ff6b6b' : '#4ecdc4';
+            // Draw rounded border with same color as background
+            ctx.strokeStyle = backgroundColor;
             ctx.lineWidth = 1 / zoom;
-            ctx.strokeRect(
+            ctx.beginPath();
+            ctx.roundRect(
                 labelPos.x - boxWidth / 2,
                 labelPos.y - boxHeight / 2,
                 boxWidth,
-                boxHeight
+                boxHeight,
+                radius
             );
+            ctx.stroke();
             
-            // Draw text
-            ctx.fillStyle = '#ffffff';
+            // Draw text with contrasting color
+            ctx.fillStyle = textColor;
             ctx.fillText(connection.label, labelPos.x, labelPos.y);
         }
         
@@ -2467,6 +2576,65 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 ctx.strokeRect(handle.x - handleSize / 2, handle.y - handleSize / 2, handleSize, handleSize);
             });
         }
+        
+        // Color palette helper functions
+        function setColorPaletteSelection(paletteId, color) {
+            const palette = document.getElementById(paletteId);
+            if (!palette) return;
+            
+            const swatches = palette.querySelectorAll('.color-swatch');
+            
+            // Remove selection from all swatches
+            swatches.forEach(swatch => swatch.classList.remove('selected'));
+            
+            // Find and select the matching color swatch
+            for (const swatch of swatches) {
+                if (swatch.dataset.color.toLowerCase() === color.toLowerCase()) {
+                    swatch.classList.add('selected');
+                    return;
+                }
+            }
+            
+            // If no exact match found, don't select any (custom color)
+        }
+        
+        function getSelectedColorFromPalette(paletteId) {
+            const palette = document.getElementById(paletteId);
+            if (!palette) return '#ffffff';
+            
+            const selectedSwatch = palette.querySelector('.color-swatch.selected');
+            if (selectedSwatch) {
+                return selectedSwatch.dataset.color;
+            }
+            
+            // If no swatch is selected, try to get the color from the current editing object
+            if (paletteId === 'rectColorPalette' && currentEditingRect) {
+                return currentEditingRect.color || '#ffffff';
+            } else if (paletteId === 'connColorPalette' && currentEditingConnection) {
+                return currentEditingConnection.color || '#4ecdc4';
+            }
+            
+            return '#ffffff';
+        }
+        
+        function setupColorPaletteEvents() {
+            // Setup click events for both color palettes
+            document.querySelectorAll('.color-palette').forEach(palette => {
+                palette.addEventListener('click', (e) => {
+                    if (e.target.classList.contains('color-swatch')) {
+                        // Remove selection from siblings
+                        palette.querySelectorAll('.color-swatch').forEach(swatch => {
+                            swatch.classList.remove('selected');
+                        });
+                        // Select clicked swatch
+                        e.target.classList.add('selected');
+                    }
+                });
+            });
+        }
+        
+        // Initialize color palette events when DOM is ready
+        setTimeout(setupColorPaletteEvents, 100);
         
         function clearCanvas() {
             rectangles = [];
@@ -2636,12 +2804,15 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             
             switch (message.type) {
                 case 'loadData':
+                    console.log('Loading data:', message.data);
                     const data = message.data;
                     rectangles = [];
                     connections = [];
                     
                     // Recreate rectangles
+                    console.log('Loading rectangles:', data.rectangles);
                     data.rectangles.forEach(rectData => {
+                        console.log('Creating rectangle:', rectData);
                         const rect = new Rectangle(
                             rectData.x, 
                             rectData.y, 
@@ -2654,12 +2825,18 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         );
                         rect.id = rectData.id;
                         rectangles.push(rect);
+                        console.log('Created rectangle:', rect);
                     });
                     
+                    console.log('Final rectangles array:', rectangles);
+                    
                     // Recreate connections
+                    console.log('Loading connections:', data.connections);
                     data.connections.forEach(connData => {
+                        console.log('Processing connection:', connData);
                         const fromRect = rectangles.find(r => r.id === connData.fromRectId);
                         const toRect = rectangles.find(r => r.id === connData.toRectId);
+                        console.log('Found rectangles - from:', fromRect, 'to:', toRect);
                         
                         if (fromRect && toRect) {
                             // Create connection with proper edge snapping

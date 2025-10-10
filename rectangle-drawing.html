@@ -215,6 +215,23 @@
             ctx.fillText(rectangle.name, centerX, centerY);
         }
         
+        // Helper function to determine if text should be black or white for best contrast
+        function getContrastColor(backgroundColor) {
+            // Remove # if present
+            const hex = backgroundColor.replace('#', '');
+            
+            // Convert to RGB
+            const r = parseInt(hex.substr(0, 2), 16);
+            const g = parseInt(hex.substr(2, 2), 16);
+            const b = parseInt(hex.substr(4, 2), 16);
+            
+            // Calculate luminance using relative luminance formula
+            const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+            
+            // Return black for light colors, white for dark colors
+            return luminance > 0.5 ? '#000000' : '#ffffff';
+        }
+        
         function drawConnectionLabel(connection) {
             if (!connection.label) return;
             
@@ -227,17 +244,26 @@
                 labelPos = getBezierPoint(points.from.x, points.from.y, points.to.x, points.to.y, 0.5);
             }
             
-            ctx.fillStyle = '#4ecdc4';
+            // Use connection color for background, or default
+            const backgroundColor = connection.color || '#4ecdc4';
+            const textColor = getContrastColor(backgroundColor);
+            
             ctx.font = (10 / zoom) + 'px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             
             const textWidth = ctx.measureText(connection.label).width + 8 / zoom;
             const textHeight = 16 / zoom;
+            const radius = textHeight / 2; // Make radius half the height for lozenge shape
             
-            ctx.fillRect(labelPos.x - textWidth/2, labelPos.y - textHeight/2, textWidth, textHeight);
+            // Draw rounded rectangle (lozenge) background
+            ctx.fillStyle = backgroundColor;
+            ctx.beginPath();
+            ctx.roundRect(labelPos.x - textWidth/2, labelPos.y - textHeight/2, textWidth, textHeight, radius);
+            ctx.fill();
             
-            ctx.fillStyle = '#ffffff';
+            // Draw text with contrasting color
+            ctx.fillStyle = textColor;
             ctx.fillText(connection.label, labelPos.x, labelPos.y);
         }
         
@@ -261,19 +287,23 @@
                 // Set line style
                 const lineStyle = conn.lineStyle || 'solid';
                 if (lineStyle === 'thick-dotted') {
-                    ctx.setLineDash([8 / zoom, 8 / zoom]); // Thick dotted line
+                    ctx.setLineDash([2.25 / zoom, 8 / zoom]); // Short dots with gaps (75% of previous length)
                     ctx.lineWidth = 4 / zoom; // Make it thicker
+                    ctx.lineCap = 'round'; // Round the ends to make dots
                 } else if (lineStyle === 'dashed') {
                     ctx.setLineDash([15 / zoom, 10 / zoom]); // Dashed line
+                    ctx.lineCap = 'butt'; // Normal line caps for dashes
                 } else {
                     ctx.setLineDash([]); // Solid line
+                    ctx.lineCap = 'butt'; // Normal line caps
                 }
                 
                 drawCurvedConnection(fromPoint.x, fromPoint.y, toPoint.x, toPoint.y, conn);
                 
-                // Reset line dash and width
+                // Reset line dash, width, and cap
                 ctx.setLineDash([]);
                 ctx.lineWidth = conn.selected ? 3 / zoom : 2 / zoom;
+                ctx.lineCap = 'butt';
                 
                 drawConnectionDot(fromPoint.x, fromPoint.y);
                 drawConnectionDot(toPoint.x, toPoint.y);
@@ -384,7 +414,7 @@
         console.log('Loaded rectangles:', rectangles);
         
         // Load connections
-        const connectionData = [{"fromRectId":"giogrll4k","toRectId":"kloyyjtrh","id":"je3i44li4","label":"AB","description":"A to B","payload":"a->B\n","color":"#8c4ccd","lineStyle":"solid","labelPosition":null},{"fromRectId":"kloyyjtrh","toRectId":"bkf1chd45","id":"1ea79jd1z","label":"BC","description":"b to c","payload":"B ----> C\n","color":"#4ecdc4","lineStyle":"dashed","labelPosition":null},{"fromRectId":"bkf1chd45","toRectId":"5lplcdkth","id":"a3j2gpx3e","label":"CD","description":"C to D","payload":"C --> D\n","color":"#4ecdc4","lineStyle":"solid","labelPosition":null},{"fromRectId":"giogrll4k","toRectId":"bkf1chd45","id":"nh1qjstv2","label":"Bypass","description":"","payload":"","color":"#4ecdc4","lineStyle":"thick-dotted","labelPosition":null}];
+        const connectionData = [{"fromRectId":"giogrll4k","toRectId":"kloyyjtrh","id":"je3i44li4","label":"AB","description":"A to B","payload":"a->B\n","color":"#8c4ccd","lineStyle":"solid","labelPosition":null},{"fromRectId":"kloyyjtrh","toRectId":"bkf1chd45","id":"1ea79jd1z","label":"BC","description":"b to c","payload":"B ----> C\n","color":"#44ff44","lineStyle":"dashed","labelPosition":null},{"fromRectId":"bkf1chd45","toRectId":"5lplcdkth","id":"a3j2gpx3e","label":"CD","description":"C to D","payload":"C --> D\n","color":"#4ecdc4","lineStyle":"solid","labelPosition":null},{"fromRectId":"giogrll4k","toRectId":"bkf1chd45","id":"nh1qjstv2","label":"Bypass","description":"","payload":"","color":"#00ffff","lineStyle":"thick-dotted","labelPosition":null}];
         console.log('Loading connections:', connectionData);
         
         connectionData.forEach(conn => {
