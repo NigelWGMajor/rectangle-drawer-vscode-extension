@@ -4,16 +4,35 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'rectangleDrawerView';
     private static currentPanel: vscode.WebviewPanel | undefined;
     private static currentData: any = { rectangles: [], connections: [] }; // Shared data store
+    private static sidebarInstance: vscode.WebviewView | undefined;
     private static lastSaveLocation: vscode.Uri | undefined;
     private static lastLoadLocation: vscode.Uri | undefined;
 
     constructor(private readonly _extensionUri: vscode.Uri) {}
+
+    // Method to refresh sidebar with current data
+    public static refreshSidebarWithData(data: any) {
+        console.log('refreshSidebarWithData called with:', data);
+        console.log('Sidebar instance exists:', !!DrawingViewProvider.sidebarInstance);
+        if (DrawingViewProvider.sidebarInstance) {
+            console.log('Refreshing sidebar with data:', data);
+            DrawingViewProvider.sidebarInstance.webview.postMessage({
+                type: 'loadData',
+                data: data
+            });
+        } else {
+            console.log('No sidebar instance available');
+        }
+    }
 
     public resolveWebviewView(
         webviewView: vscode.WebviewView,
         context: vscode.WebviewViewResolveContext,
         _token: vscode.CancellationToken,
     ) {
+        // Store reference to sidebar instance
+        DrawingViewProvider.sidebarInstance = webviewView;
+        
         webviewView.webview.options = {
             enableScripts: true,
             localResourceRoots: [this._extensionUri],
@@ -21,6 +40,21 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         };
 
         webviewView.webview.html = this._getHtmlForWebview(webviewView.webview, 'sidebar');
+
+        // Load current data if available
+        if (DrawingViewProvider.currentData) {
+            console.log('Sidebar resolving with data:', DrawingViewProvider.currentData);
+            // Send data after webview is ready
+            setTimeout(() => {
+                webviewView.webview.postMessage({ 
+                    type: 'loadData', 
+                    data: DrawingViewProvider.currentData 
+                });
+                console.log('Sidebar loaded with data:', DrawingViewProvider.currentData);
+            }, 500);
+        } else {
+            console.log('No current data available for sidebar');
+        }
 
         webviewView.webview.onDidReceiveMessage(
             message => {
@@ -40,6 +74,19 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         break;
                     case 'openInPanel':
                         this._openInPanelWithData(message.data);
+                        break;
+                    case 'openInSidebar':
+                        // Store the data and show sidebar view
+                        if (message.data) {
+                            DrawingViewProvider.currentData = message.data;
+                        }
+                        // Focus the sidebar activity bar and view
+                        vscode.commands.executeCommand('workbench.view.extension.rectangleDrawer').then(() => {
+                            // After sidebar is shown, refresh with data
+                            setTimeout(() => {
+                                DrawingViewProvider.refreshSidebarWithData(DrawingViewProvider.currentData);
+                            }, 200);
+                        });
                         break;
                 }
             }
@@ -105,6 +152,21 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         break;
                     case 'dataChanged':
                         DrawingViewProvider.currentData = message.data;
+                        break;
+                    case 'openInSidebar':
+                        // Store the data and show sidebar view
+                        if (message.data) {
+                            DrawingViewProvider.currentData = message.data;
+                        }
+                        // Focus the sidebar activity bar and view
+                        vscode.commands.executeCommand('workbench.view.extension.rectangleDrawer').then(() => {
+                            // After sidebar is shown, refresh with data
+                            setTimeout(() => {
+                                DrawingViewProvider.refreshSidebarWithData(DrawingViewProvider.currentData);
+                            }, 200);
+                        });
+                        // Close panel after a brief delay
+                        setTimeout(() => panel.dispose(), 400);
                         break;
                 }
             }
@@ -712,6 +774,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Rectangle Drawer</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         body {
             margin: 0;
@@ -763,14 +826,97 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             background-color: var(--vscode-button-background);
             color: var(--vscode-button-foreground);
             border: none;
-            padding: 6px 12px;
-            margin-right: 8px;
+            padding: 6px 8px;
+            margin-right: 5px;
             cursor: pointer;
-            border-radius: 2px;
+            border-radius: 3px;
+            font-size: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 28px;
+            height: 28px;
+            position: relative;
         }
         
         button:hover {
             background-color: var(--vscode-button-hoverBackground);
+        }
+        
+        button i {
+            font-size: 12px;
+        }
+        
+        .tooltip-text {
+            visibility: hidden;
+            background-color: var(--vscode-editorHoverWidget-background);
+            color: var(--vscode-editorHoverWidget-foreground);
+            border: 1px solid var(--vscode-editorHoverWidget-border);
+            text-align: center;
+            border-radius: 3px;
+            padding: 5px 8px;
+            position: absolute;
+            z-index: 1000;
+            top: 120%;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 12px;
+            white-space: nowrap;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+        
+        button:hover .tooltip-text {
+            visibility: visible;
+        }
+        
+        .help-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 2000;
+        }
+        
+        .help-content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: var(--vscode-editor-background);
+            color: var(--vscode-editor-foreground);
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 6px;
+            padding: 20px;
+            max-width: 500px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+        
+        .help-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            border-bottom: 1px solid var(--vscode-panel-border);
+            padding-bottom: 10px;
+        }
+        
+        .help-close {
+            background: none;
+            border: none;
+            color: var(--vscode-editor-foreground);
+            font-size: 16px;
+            cursor: pointer;
+            padding: 0;
+            margin: 0;
+            min-width: auto;
+            height: auto;
+        }
+        
+        .help-close:hover {
+            background-color: var(--vscode-toolbar-hoverBackground);
         }
         
         .info {
@@ -988,12 +1134,34 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
 </head>
 <body>
     <div class="controls">
-        <button onclick="clearCanvas()">Clear All</button>
-        <button onclick="saveDrawing()">Save</button>
-        <button onclick="loadDrawing()">Load</button>
-        <button onclick="exportToHTML()">Export HTML</button>
-        <button onclick="resetView()">Reset View</button>
-        ${context === 'sidebar' ? '<button onclick="openInPanel()">Open in Panel</button>' : ''}
+        <button onclick="loadDrawing()" title="Load">
+            <i class="fas fa-folder-open"></i>
+            <span class="tooltip-text">Load</span>
+        </button>
+        <button onclick="saveDrawing()" title="Save">
+            <i class="fas fa-save"></i>
+            <span class="tooltip-text">Save</span>
+        </button>
+        <button onclick="clearCanvas()" title="Clear All">
+            <i class="fas fa-trash"></i>
+            <span class="tooltip-text">Clear All</span>
+        </button>
+        <button onclick="resetView()" title="Reset View">
+            <i class="fas fa-home"></i>
+            <span class="tooltip-text">Reset View</span>
+        </button>
+        ${context === 'sidebar' ? 
+            '<button onclick="openInPanel()" title="Open in Panel"><i class="fas fa-window-maximize"></i><span class="tooltip-text">Open in Panel</span></button>' : 
+            '<button onclick="openInSidebar()" title="Show in Sidebar"><i class="fas fa-columns"></i><span class="tooltip-text">Show in Sidebar</span></button>'
+        }
+        <button onclick="exportToHTML()" title="Export HTML">
+            <i class="fas fa-file-export"></i>
+            <span class="tooltip-text">Export HTML</span>
+        </button>
+        <button onclick="showHelp()" title="Help">
+            <i class="fas fa-question-circle"></i>
+            <span class="tooltip-text">Help</span>
+        </button>
         <span style="margin-left: 10px; font-size: ${context === 'sidebar' ? '9px' : '11px'};">
             Zoom: <span id="zoomLevel">100%</span>
         </span>
@@ -1001,6 +1169,34 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
     
     <div class="canvas-container">
         <canvas id="canvas"></canvas>
+    </div>
+    
+    <div id="helpModal" class="help-modal">
+        <div class="help-content">
+            <div class="help-header">
+                <h3>Rectangle Drawing Tool - Help</h3>
+                <button class="help-close" onclick="hideHelp()">&times;</button>
+            </div>
+            <div>
+                <h4>How to Use:</h4>
+                <ul>
+                    <li><strong>Draw Rectangle:</strong> Click and drag on the canvas</li>
+                    <li><strong>Move Rectangle:</strong> Drag the rectangle to reposition</li>
+                    <li><strong>Resize Rectangle:</strong> Drag the corner handles</li>
+                    <li><strong>Connect Rectangles:</strong> Right-click and select "Start Connection", then right-click target and "End Connection"</li>
+                    <li><strong>Edit Properties:</strong> Right-click on rectangle or connection for options</li>
+                    <li><strong>Pan View:</strong> Hold Shift and drag to pan around</li>
+                    <li><strong>Zoom:</strong> Use mouse wheel to zoom in/out</li>
+                </ul>
+                <h4>Keyboard Shortcuts:</h4>
+                <ul>
+                    <li><strong>Delete:</strong> Select rectangle/connection and press Delete</li>
+                    <li><strong>Escape:</strong> Cancel current operation</li>
+                    <li><strong>Ctrl+S:</strong> Save drawing</li>
+                    <li><strong>Ctrl+O:</strong> Load drawing</li>
+                </ul>
+            </div>
+        </div>
     </div>
     
     <div id="contextMenu" class="context-menu">
@@ -1089,24 +1285,6 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 <button onclick="cancelProperties()">Cancel</button>
             </div>
         </div>
-    </div>
-    
-    <div class="info">
-        <div><strong>Instructions:</strong></div>
-        <div>• Left-click and drag to create rectangles</div>
-        <div>• Right-click and drag to connect rectangles</div>
-        <div>• <strong>Right-drag to empty space creates new connected rectangle</strong></div>
-        <div>• Click on rectangles to select them</div>
-        <div>• <strong>Double-click rectangles to edit name</strong></div>
-        <div>• <strong>Double-click connections to add labels</strong></div>
-        <div>• <strong>Drag connection labels to reposition (curves line)</strong></div>
-        <div>• Drag selected rectangles to move them</div>
-        <div>• Drag resize handles (white squares) to resize</div>
-        <div>• <strong>Right-click rectangles or connections to delete</strong></div>
-        <div>• <strong>Middle-click and drag to pan</strong></div>
-        <div>• <strong>Mouse wheel to zoom in/out</strong></div>
-        <div>• <strong>All elements snap to 10px grid</strong></div>
-        <div>• Save/Load remembers last used folder</div>
     </div>
 
     <script>
@@ -2782,6 +2960,54 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 data: data
             });
         }
+        
+        function openInSidebar() {
+            // Get current drawing data before closing panel
+            const data = {
+                rectangles: rectangles.map(r => ({
+                    x: r.x,
+                    y: r.y,
+                    width: r.width,
+                    height: r.height,
+                    id: r.id,
+                    name: r.name || '',
+                    description: r.description || '',
+                    payload: r.payload || '',
+                    color: r.color || '#ffffff'
+                })),
+                connections: connections.map(c => ({
+                    fromRectId: c.fromRect.id,
+                    toRectId: c.toRect.id,
+                    id: c.id,
+                    label: c.label || '',
+                    description: c.description || '',
+                    payload: c.payload || '',
+                    color: c.color || '#4ecdc4',
+                    lineStyle: c.lineStyle || 'solid',
+                    labelPosition: c.labelPosition
+                }))
+            };
+            
+            vscode.postMessage({
+                type: 'openInSidebar',
+                data: data
+            });
+        }
+        
+        function showHelp() {
+            document.getElementById('helpModal').style.display = 'block';
+        }
+        
+        function hideHelp() {
+            document.getElementById('helpModal').style.display = 'none';
+        }
+        
+        // Close help modal when clicking outside
+        document.getElementById('helpModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                hideHelp();
+            }
+        });
         
         function resetView() {
             panX = 0;
