@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "created": "2025-10-09T21:45:50.844Z",
+  "created": "2025-10-10T13:29:11.617Z",
   "rectangles": [
     {
       "x": 110,
@@ -10,7 +10,8 @@
       "id": "giogrll4k",
       "name": "A",
       "description": "Alpha",
-      "payload": "AAA\n"
+      "payload": "AAA\n",
+      "color": "#d62424"
     },
     {
       "x": 290,
@@ -20,7 +21,8 @@
       "id": "kloyyjtrh",
       "name": "B",
       "description": "Bravo",
-      "payload": "BBB\n"
+      "payload": "BBB\n",
+      "color": "#0bad0e"
     },
     {
       "x": 520,
@@ -30,7 +32,8 @@
       "id": "bkf1chd45",
       "name": "C",
       "description": "Charlie",
-      "payload": "CCCC\n"
+      "payload": "CCCC\n",
+      "color": "#ffffff"
     },
     {
       "x": 680,
@@ -40,7 +43,8 @@
       "id": "5lplcdkth",
       "name": "D",
       "description": "Delta",
-      "payload": "DDDD\n---eof---\n"
+      "payload": "DDDD\n---eof---\n",
+      "color": "#ffffff"
     }
   ],
   "connections": [
@@ -51,6 +55,8 @@
       "label": "AB",
       "description": "A to B",
       "payload": "a->B\n",
+      "color": "#4ecdc4",
+      "lineStyle": "solid",
       "labelPosition": null
     },
     {
@@ -60,6 +66,8 @@
       "label": "BC",
       "description": "b to c",
       "payload": "B ----> C\n",
+      "color": "#4ecdc4",
+      "lineStyle": "dashed",
       "labelPosition": null
     },
     {
@@ -69,6 +77,8 @@
       "label": "CD",
       "description": "C to D",
       "payload": "C --> D\n",
+      "color": "#4ecdc4",
+      "lineStyle": "solid",
       "labelPosition": null
     },
     {
@@ -78,6 +88,8 @@
       "label": "Bypass",
       "description": "",
       "payload": "",
+      "color": "#4ecdc4",
+      "lineStyle": "thick-dotted",
       "labelPosition": null
     }
   ]

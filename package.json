@@ -24,6 +24,12 @@
         "title": "Show in Sidebar",
         "category": "Rectangle Drawer",
         "icon": "$(layout-sidebar-left)"
+      },
+      {
+        "command": "rectangleDrawer.openDevTools",
+        "title": "Open Developer Tools",
+        "category": "Rectangle Drawer",
+        "icon": "$(tools)"
       }
     ],
     "viewsContainers": {
@@ -60,6 +66,10 @@
         },
         {
           "command": "rectangleDrawer.openInSidebar",
+          "when": "true"
+        },
+        {
+          "command": "rectangleDrawer.openDevTools",
           "when": "true"
         }
       ]

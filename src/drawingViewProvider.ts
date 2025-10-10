@@ -16,7 +16,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
     ) {
         webviewView.webview.options = {
             enableScripts: true,
-            localResourceRoots: [this._extensionUri]
+            localResourceRoots: [this._extensionUri],
+            enableCommandUris: true
         };
 
         webviewView.webview.html = this._getHtmlForWebview(webviewView.webview, 'sidebar');
@@ -70,7 +71,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             {
                 enableScripts: true,
                 localResourceRoots: [extensionUri],
-                retainContextWhenHidden: true
+                retainContextWhenHidden: true,
+                enableCommandUris: true
             }
         );
 
@@ -332,7 +334,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         
         // Classes
         class Rectangle {
-            constructor(x, y, width, height, name = '', description = '', payload = '') {
+            constructor(x, y, width, height, name = '', description = '', payload = '', color = '#ffffff') {
                 this.x = x;
                 this.y = y;
                 this.width = width;
@@ -342,6 +344,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 this.name = name;
                 this.description = description;
                 this.payload = payload;
+                this.color = color;
             }
             
             contains(x, y) {
@@ -351,7 +354,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         }
         
         class Connection {
-            constructor(fromRect, fromPoint, toRect, toPoint, label = '', description = '', payload = '') {
+            constructor(fromRect, fromPoint, toRect, toPoint, label = '', description = '', payload = '', color = '#4ecdc4', lineStyle = 'solid') {
                 this.fromRect = fromRect;
                 this.fromPoint = fromPoint;
                 this.toRect = toRect;
@@ -361,6 +364,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 this.label = label;
                 this.description = description;
                 this.payload = payload;
+                this.color = color;
+                this.lineStyle = lineStyle;
                 this.labelPosition = null;
             }
             
@@ -405,34 +410,31 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         
         function drawGrid() {
             ctx.save();
-            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.setTransform(zoom, 0, 0, zoom, panX, panY);
             
+            // Calculate visible area in world coordinates
             const startX = Math.floor((-panX) / zoom / gridSize) * gridSize;
             const startY = Math.floor((-panY) / zoom / gridSize) * gridSize;
             const endX = Math.ceil((canvas.width - panX) / zoom / gridSize) * gridSize;
             const endY = Math.ceil((canvas.height - panY) / zoom / gridSize) * gridSize;
             
-            ctx.strokeStyle = '#333333';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
+            // Set dot style - subtle gray dots
+            ctx.fillStyle = 'rgba(128, 128, 128, 0.3)';
+            const dotRadius = 1 / zoom; // Very small dots that scale with zoom
             
+            // Draw dots at each grid intersection
             for (let x = startX; x <= endX; x += gridSize) {
-                const screenX = x * zoom + panX;
-                ctx.moveTo(screenX, 0);
-                ctx.lineTo(screenX, canvas.height);
+                for (let y = startY; y <= endY; y += gridSize) {
+                    ctx.beginPath();
+                    ctx.arc(x, y, dotRadius, 0, 2 * Math.PI);
+                    ctx.fill();
+                }
             }
             
-            for (let y = startY; y <= endY; y += gridSize) {
-                const screenY = y * zoom + panY;
-                ctx.moveTo(0, screenY);
-                ctx.lineTo(canvas.width, screenY);
-            }
-            
-            ctx.stroke();
             ctx.restore();
         }
         
-        function drawCurvedConnection(fromX, fromY, toX, toY) {
+        function drawCurvedConnection(fromX, fromY, toX, toY, connection = null) {
             ctx.beginPath();
             ctx.moveTo(fromX, fromY);
             
@@ -515,9 +517,25 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 const fromPoint = points.from;
                 const toPoint = points.to;
                 
-                ctx.strokeStyle = '#4ecdc4';
+                ctx.strokeStyle = conn.color || '#4ecdc4';
                 ctx.lineWidth = 2 / zoom;
-                drawCurvedConnection(fromPoint.x, fromPoint.y, toPoint.x, toPoint.y);
+                
+                // Set line style
+                const lineStyle = conn.lineStyle || 'solid';
+                if (lineStyle === 'thick-dotted') {
+                    ctx.setLineDash([8 / zoom, 8 / zoom]); // Thick dotted line
+                    ctx.lineWidth = 4 / zoom; // Make it thicker
+                } else if (lineStyle === 'dashed') {
+                    ctx.setLineDash([15 / zoom, 10 / zoom]); // Dashed line
+                } else {
+                    ctx.setLineDash([]); // Solid line
+                }
+                
+                drawCurvedConnection(fromPoint.x, fromPoint.y, toPoint.x, toPoint.y, conn);
+                
+                // Reset line dash and width
+                ctx.setLineDash([]);
+                ctx.lineWidth = conn.selected ? 3 / zoom : 2 / zoom;
                 
                 drawConnectionDot(fromPoint.x, fromPoint.y);
                 drawConnectionDot(toPoint.x, toPoint.y);
@@ -532,7 +550,17 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 const hasLeftConnections = connections.some(c => c.toRect === rectangle);
                 const hasRightConnections = connections.some(c => c.fromRect === rectangle);
                 
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+                // Convert hex color to rgba with low opacity for subtle background
+                let fillColor = 'rgba(255, 255, 255, 0.1)'; // Default white
+                if (rectangle.color && rectangle.color !== '#ffffff') {
+                    const hexColor = rectangle.color;
+                    const r = parseInt(hexColor.substr(1, 2), 16);
+                    const g = parseInt(hexColor.substr(3, 2), 16);
+                    const b = parseInt(hexColor.substr(5, 2), 16);
+                    fillColor = 'rgba(' + r + ', ' + g + ', ' + b + ', 0.15)'; // Subtle 15% opacity
+                }
+                
+                ctx.fillStyle = fillColor;
                 ctx.strokeStyle = '#ffffff';
                 
                 ctx.fillRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height);
@@ -610,7 +638,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         
         // Load data and initialize
         rectangles = ${JSON.stringify(data.rectangles)}.map(r => {
-            const rect = new Rectangle(r.x, r.y, r.width, r.height, r.name, r.description, r.payload);
+            const rect = new Rectangle(r.x, r.y, r.width, r.height, r.name, r.description, r.payload, r.color);
             rect.id = r.id; // Preserve original ID
             return rect;
         });
@@ -628,7 +656,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             if (fromRect && toRect) {
                 const fromPoint = { x: fromRect.x + fromRect.width, y: fromRect.y + fromRect.height / 2 };
                 const toPoint = { x: toRect.x, y: toRect.y + toRect.height / 2 };
-                const connection = new Connection(fromRect, fromPoint, toRect, toPoint, conn.label, conn.description, conn.payload);
+                const connection = new Connection(fromRect, fromPoint, toRect, toPoint, conn.label, conn.description, conn.payload, conn.color, conn.lineStyle);
                 connection.id = conn.id;
                 if (conn.labelPosition) {
                     connection.labelPosition = conn.labelPosition;
@@ -880,6 +908,25 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         .property-buttons button:last-child:hover {
             background: var(--vscode-button-secondaryHoverBackground);
         }
+        
+        .radio-group {
+            display: flex;
+            gap: 15px;
+            margin-top: 5px;
+        }
+        
+        .radio-group label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        .radio-group input[type="radio"] {
+            margin: 0;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -921,6 +968,10 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     <label for="rectPayload">Payload:</label>
                     <textarea id="rectPayload" placeholder="Enter payload data (Ctrl+C/V when selected)" rows="3" wrap="soft"></textarea>
                 </div>
+                <div class="property-field">
+                    <label for="rectColor">Color:</label>
+                    <input type="color" id="rectColor" value="#ffffff">
+                </div>
             </div>
             <div id="connectionProperties" style="display: none;">
                 <div class="property-field">
@@ -934,6 +985,18 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 <div class="property-field">
                     <label for="connPayload">Payload:</label>
                     <textarea id="connPayload" placeholder="Enter payload data (Ctrl+C/V when selected)" rows="3" wrap="soft"></textarea>
+                </div>
+                <div class="property-field">
+                    <label for="connColor">Color:</label>
+                    <input type="color" id="connColor" value="#4ecdc4">
+                </div>
+                <div class="property-field">
+                    <label>Line Style:</label>
+                    <div class="radio-group">
+                        <label><input type="radio" name="lineStyle" value="solid" id="lineSolid" checked> Solid</label>
+                        <label><input type="radio" name="lineStyle" value="thick-dotted" id="lineThickDotted"> Thick Dotted</label>
+                        <label><input type="radio" name="lineStyle" value="dashed" id="lineDashed"> Dashed</label>
+                    </div>
                 </div>
             </div>
             <div class="property-buttons">
@@ -969,14 +1032,21 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         
         // Make canvas responsive
         function resizeCanvas() {
+            console.log('resizeCanvas called');
             const container = canvasContainer;
-            if (!container) return;
+            if (!container) {
+                console.error('Canvas container not found');
+                return;
+            }
             
             const rect = container.getBoundingClientRect();
+            console.log('Container rect:', rect);
             
             // Ensure we have minimum dimensions
             const width = Math.max(rect.width, 200);
             const height = Math.max(rect.height, 200);
+            
+            console.log('Setting canvas size to:', { width, height });
             
             // Set canvas size to fill container
             canvas.width = width;
@@ -986,6 +1056,13 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             canvas.style.width = width + 'px';
             canvas.style.height = height + 'px';
             
+            console.log('Canvas after resize:', {
+                width: canvas.width,
+                height: canvas.height,
+                styleWidth: canvas.style.width,
+                styleHeight: canvas.style.height
+            });
+            
             // Redraw everything
             draw();
         }
@@ -994,9 +1071,15 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         window.addEventListener('resize', resizeCanvas);
         window.addEventListener('load', resizeCanvas);
         
+        // Add debug logging
+        console.log('Setting up canvas...');
+        console.log('Canvas element:', canvas);
+        console.log('Canvas container:', canvasContainer);
+        
         // Use ResizeObserver for better responsiveness
         if (window.ResizeObserver) {
             const resizeObserver = new ResizeObserver(entries => {
+                console.log('ResizeObserver triggered:', entries);
                 requestAnimationFrame(resizeCanvas);
             });
             resizeObserver.observe(canvasContainer);
@@ -1004,11 +1087,18 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         
         // Initial setup with multiple attempts to ensure proper sizing
         setTimeout(() => {
+            console.log('Initial resize attempt 1');
             resizeCanvas();
             updateZoomDisplay();
         }, 100);
-        setTimeout(resizeCanvas, 300);
-        setTimeout(resizeCanvas, 500);
+        setTimeout(() => {
+            console.log('Initial resize attempt 2');
+            resizeCanvas();
+        }, 300);
+        setTimeout(() => {
+            console.log('Initial resize attempt 3');
+            resizeCanvas();
+        }, 500);
         
         let rectangles = [];
         let connections = [];
@@ -1043,7 +1133,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         
         // Rectangle class
         class Rectangle {
-            constructor(x, y, width, height, name = '', description = '', payload = '') {
+            constructor(x, y, width, height, name = '', description = '', payload = '', color = '#ffffff') {
                 this.x = snapToGrid(x);
                 this.y = snapToGrid(y);
                 this.width = snapToGrid(Math.max(width, gridSize));
@@ -1053,6 +1143,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 this.name = name;
                 this.description = description;
                 this.payload = payload;
+                this.color = color;
             }
             
             contains(x, y) {
@@ -1166,7 +1257,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         
         // Connection class
         class Connection {
-            constructor(fromRect, fromPoint, toRect, toPoint, label = '', description = '', payload = '') {
+            constructor(fromRect, fromPoint, toRect, toPoint, label = '', description = '', payload = '', color = '#4ecdc4', lineStyle = 'solid') {
                 this.fromRect = fromRect;
                 this.fromPoint = fromPoint;
                 this.toRect = toRect;
@@ -1176,6 +1267,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 this.label = label;
                 this.description = description;
                 this.payload = payload;
+                this.color = color;
+                this.lineStyle = lineStyle; // 'solid', 'thick-dotted', or 'dashed'
                 this.labelPosition = null; // Will be calculated automatically if null
                 this.isDraggingLabel = false;
             }
@@ -1499,6 +1592,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             const nameInput = document.getElementById('rectName');
             const descriptionInput = document.getElementById('rectDescription');
             const payloadInput = document.getElementById('rectPayload');
+            const colorInput = document.getElementById('rectColor');
             
             // Configure for rectangle editing
             title.textContent = 'Edit Rectangle Properties';
@@ -1509,6 +1603,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             nameInput.value = rectangle.name || '';
             descriptionInput.value = rectangle.description || '';
             payloadInput.value = rectangle.payload || '';
+            colorInput.value = rectangle.color || '#ffffff';
             
             // Show the dialog
             propertyEditor.style.display = 'flex';
@@ -1527,6 +1622,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             const labelInput = document.getElementById('connLabel');
             const descriptionInput = document.getElementById('connDescription');
             const payloadInput = document.getElementById('connPayload');
+            const colorInput = document.getElementById('connColor');
             
             // Configure for connection editing
             title.textContent = 'Edit Connection Properties';
@@ -1537,6 +1633,13 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             labelInput.value = connection.label || '';
             descriptionInput.value = connection.description || '';
             payloadInput.value = connection.payload || '';
+            colorInput.value = connection.color || '#4ecdc4';
+            
+            // Set line style radio buttons
+            const lineStyle = connection.lineStyle || 'solid';
+            document.getElementById('lineSolid').checked = (lineStyle === 'solid');
+            document.getElementById('lineThickDotted').checked = (lineStyle === 'thick-dotted');
+            document.getElementById('lineDashed').checked = (lineStyle === 'dashed');
             
             // Show the dialog
             propertyEditor.style.display = 'flex';
@@ -1550,18 +1653,32 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 const nameInput = document.getElementById('rectName');
                 const descriptionInput = document.getElementById('rectDescription');
                 const payloadInput = document.getElementById('rectPayload');
+                const colorInput = document.getElementById('rectColor');
                 currentEditingRect.name = nameInput.value;
                 currentEditingRect.description = descriptionInput.value;
                 currentEditingRect.payload = payloadInput.value;
+                currentEditingRect.color = colorInput.value;
                 notifyDataChanged();
                 draw();
             } else if (currentEditingConnection) {
                 const labelInput = document.getElementById('connLabel');
                 const descriptionInput = document.getElementById('connDescription');
                 const payloadInput = document.getElementById('connPayload');
+                const colorInput = document.getElementById('connColor');
+                const lineStyleRadios = document.getElementsByName('lineStyle');
+                let selectedLineStyle = 'solid';
+                for (const radio of lineStyleRadios) {
+                    if (radio.checked) {
+                        selectedLineStyle = radio.value;
+                        break;
+                    }
+                }
+                
                 currentEditingConnection.label = labelInput.value;
                 currentEditingConnection.description = descriptionInput.value;
                 currentEditingConnection.payload = payloadInput.value;
+                currentEditingConnection.color = colorInput.value;
+                currentEditingConnection.lineStyle = selectedLineStyle;
                 notifyDataChanged();
                 draw();
             }
@@ -1779,7 +1896,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 ctx.setLineDash([5, 5]);
                 ctx.strokeStyle = '#ff6b6b';
                 ctx.lineWidth = 2 / zoom; // Adjust line width for zoom
-                drawCurvedConnection(startPoint.x, startPoint.y, endX, endY);
+                drawCurvedConnection(startPoint.x, startPoint.y, endX, endY, null);
                 ctx.setLineDash([]);
                 
                 // Draw temporary dots
@@ -1874,7 +1991,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     currentRect.height,
                     name,
                     '', // Empty description initially
-                    ''  // Empty payload initially
+                    '',  // Empty payload initially
+                    '#ffffff' // Default white color
                 );
                 rectangles.push(newRect);
                 notifyDataChanged();
@@ -1894,7 +2012,11 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         startPoint,
                         targetRect,
                         endPoint,
-                        '' // Empty label initially
+                        '', // Empty label initially
+                        '', // Empty description initially
+                        '', // Empty payload initially
+                        '#4ecdc4', // Default color
+                        'solid' // Default line style
                     );
                     connections.push(connection);
                     notifyDataChanged();
@@ -1916,7 +2038,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         sourceRect.height,
                         name,
                         '', // Empty description initially
-                        ''  // Empty payload initially
+                        '',  // Empty payload initially
+                        '#ffffff' // Default white color
                     );
                     rectangles.push(newRect);
                     
@@ -1931,7 +2054,11 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         startPoint,
                         newRect,
                         endPoint,
-                        '' // Empty label initially
+                        '', // Empty label initially
+                        '', // Empty description initially
+                        '', // Empty payload initially
+                        '#4ecdc4', // Default color
+                        'solid' // Default line style
                     );
                     connections.push(connection);
                     notifyDataChanged();
@@ -1993,6 +2120,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         }
 
         function draw() {
+            console.log('draw() called - canvas size:', canvas.width, 'x', canvas.height);
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
             // Save context and apply pan/zoom transform
@@ -2000,7 +2128,13 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             ctx.setTransform(zoom, 0, 0, zoom, panX, panY);
             
             // Draw grid dots
+            console.log('Drawing grid dots...');
             drawGridDots();
+            
+            console.log('Drawing connections and rectangles...', { 
+                connectionsCount: connections.length, 
+                rectanglesCount: rectangles.length 
+            });
             
             // Draw connections
             connections.forEach(conn => {
@@ -2012,12 +2146,27 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     ctx.strokeStyle = '#ff6b6b';
                     ctx.lineWidth = 3 / zoom; // Adjust line width for zoom
                 } else {
-                    ctx.strokeStyle = '#4ecdc4';
+                    ctx.strokeStyle = conn.color || '#4ecdc4';
                     ctx.lineWidth = 2 / zoom; // Adjust line width for zoom
+                }
+                
+                // Set line style
+                const lineStyle = conn.lineStyle || 'solid';
+                if (lineStyle === 'thick-dotted') {
+                    ctx.setLineDash([8 / zoom, 8 / zoom]); // Thick dotted line
+                    ctx.lineWidth = 4 / zoom; // Make it thicker
+                } else if (lineStyle === 'dashed') {
+                    ctx.setLineDash([15 / zoom, 10 / zoom]); // Dashed line
+                } else {
+                    ctx.setLineDash([]); // Solid line
                 }
                 
                 // Draw curved line using bezier curve
                 drawCurvedConnection(fromPoint.x, fromPoint.y, toPoint.x, toPoint.y, conn);
+                
+                // Reset line dash and width
+                ctx.setLineDash([]);
+                ctx.lineWidth = conn.selected ? 3 / zoom : 2 / zoom;
                 
                 // Draw dots at both ends
                 drawConnectionDot(fromPoint.x, fromPoint.y, conn.selected);
@@ -2035,11 +2184,21 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 const hasLeftConnections = connections.some(c => c.toRect === rectangle);
                 const hasRightConnections = connections.some(c => c.fromRect === rectangle);
                 
+                // Convert hex color to rgba with low opacity for subtle background
+                let fillColor = 'rgba(255, 255, 255, 0.1)'; // Default white
+                if (rectangle.color && rectangle.color !== '#ffffff') {
+                    const hexColor = rectangle.color;
+                    const r = parseInt(hexColor.substr(1, 2), 16);
+                    const g = parseInt(hexColor.substr(3, 2), 16);
+                    const b = parseInt(hexColor.substr(5, 2), 16);
+                    fillColor = 'rgba(' + r + ', ' + g + ', ' + b + ', 0.15)'; // Subtle 15% opacity
+                }
+                
                 if (rectangle.selected) {
                     ctx.fillStyle = 'rgba(100, 150, 255, 0.3)';
                     ctx.strokeStyle = '#6496ff';
                 } else {
-                    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+                    ctx.fillStyle = fillColor;
                     ctx.strokeStyle = '#ffffff';
                 }
                 
@@ -2125,11 +2284,11 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             const fontSize = Math.max(12 / zoom, 8); // Scale font size with zoom, minimum 8px
             ctx.font = fontSize + 'px Arial';
             ctx.textAlign = 'center';
-            ctx.textBaseline = 'top';
+            ctx.textBaseline = 'middle'; // Center vertically like HTML export
             
-            // Calculate text position (top center of rectangle)
+            // Calculate text position (center of rectangle)
             const textX = rectangle.x + rectangle.width / 2;
-            const textY = rectangle.y + 4 / zoom; // Small padding from top edge
+            const textY = rectangle.y + rectangle.height / 2; // Center vertically
             
             // Draw text with outline for better readability without background
             const lineWidth = Math.max(2 / zoom, 1);
@@ -2184,24 +2343,30 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         }
         
         function drawGridDots() {
+            console.log('drawGridDots called with zoom:', zoom, 'pan:', panX, panY);
             // Calculate visible area in world coordinates
             const startX = Math.floor((-panX) / zoom / gridSize) * gridSize;
             const startY = Math.floor((-panY) / zoom / gridSize) * gridSize;
             const endX = Math.ceil((canvas.width - panX) / zoom / gridSize) * gridSize;
             const endY = Math.ceil((canvas.height - panY) / zoom / gridSize) * gridSize;
             
+            console.log('Grid bounds:', { startX, startY, endX, endY });
+            
             // Set dot style - subtle gray dots
             ctx.fillStyle = 'rgba(128, 128, 128, 0.3)';
             const dotRadius = 1 / zoom; // Very small dots that scale with zoom
             
+            let dotCount = 0;
             // Draw dots at each grid intersection
             for (let x = startX; x <= endX; x += gridSize) {
                 for (let y = startY; y <= endY; y += gridSize) {
                     ctx.beginPath();
                     ctx.arc(x, y, dotRadius, 0, 2 * Math.PI);
                     ctx.fill();
+                    dotCount++;
                 }
             }
+            console.log('Drew', dotCount, 'grid dots');
         }
         
         function resetLabelPositionsForRectangle(rectangle) {
@@ -2349,7 +2514,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     id: r.id,
                     name: r.name || '',
                     description: r.description || '',
-                    payload: r.payload || ''
+                    payload: r.payload || '',
+                    color: r.color || '#ffffff'
                 })),
                 connections: connections.map(c => ({
                     fromRectId: c.fromRect.id,
@@ -2358,6 +2524,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     label: c.label || '',
                     description: c.description || '',
                     payload: c.payload || '',
+                    color: c.color || '#4ecdc4',
+                    lineStyle: c.lineStyle || 'solid',
                     labelPosition: c.labelPosition
                 }))
             };
@@ -2384,7 +2552,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     id: r.id,
                     name: r.name || '',
                     description: r.description || '',
-                    payload: r.payload || ''
+                    payload: r.payload || '',
+                    color: r.color || '#ffffff'
                 })),
                 connections: connections.map(c => ({
                     fromRectId: c.fromRect.id,
@@ -2393,6 +2562,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     label: c.label || '',
                     description: c.description || '',
                     payload: c.payload || '',
+                    color: c.color || '#4ecdc4',
+                    lineStyle: c.lineStyle || 'solid',
                     labelPosition: c.labelPosition
                 }))
             };
@@ -2412,13 +2583,20 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     width: r.width,
                     height: r.height,
                     id: r.id,
-                    name: r.name || ''
+                    name: r.name || '',
+                    description: r.description || '',
+                    payload: r.payload || '',
+                    color: r.color || '#ffffff'
                 })),
                 connections: connections.map(c => ({
                     fromRectId: c.fromRect.id,
                     toRectId: c.toRect.id,
                     id: c.id,
                     label: c.label || '',
+                    description: c.description || '',
+                    payload: c.payload || '',
+                    color: c.color || '#4ecdc4',
+                    lineStyle: c.lineStyle || 'solid',
                     labelPosition: c.labelPosition
                 }))
             };
@@ -2463,7 +2641,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                             rectData.height, 
                             rectData.name || '', 
                             rectData.description || '', 
-                            rectData.payload || ''
+                            rectData.payload || '',
+                            rectData.color || '#ffffff'
                         );
                         rect.id = rectData.id;
                         rectangles.push(rect);
@@ -2488,7 +2667,9 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                             const connection = new Connection(fromRect, fromPoint, toRect, toPoint, 
                                 connData.label || '', 
                                 connData.description || '', 
-                                connData.payload || '');
+                                connData.payload || '',
+                                connData.color || '#4ecdc4',
+                                connData.lineStyle || 'solid');
                             connection.id = connData.id;
                             if (connData.labelPosition) {
                                 connection.labelPosition = connData.labelPosition;

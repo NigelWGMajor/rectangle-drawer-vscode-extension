@@ -72,7 +72,7 @@
         
         // Classes
         class Rectangle {
-            constructor(x, y, width, height, name = '', description = '', payload = '') {
+            constructor(x, y, width, height, name = '', description = '', payload = '', color = '#ffffff') {
                 this.x = x;
                 this.y = y;
                 this.width = width;
@@ -82,6 +82,7 @@
                 this.name = name;
                 this.description = description;
                 this.payload = payload;
+                this.color = color;
             }
             
             contains(x, y) {
@@ -91,7 +92,7 @@
         }
         
         class Connection {
-            constructor(fromRect, fromPoint, toRect, toPoint, label = '', description = '', payload = '') {
+            constructor(fromRect, fromPoint, toRect, toPoint, label = '', description = '', payload = '', color = '#4ecdc4', lineStyle = 'solid') {
                 this.fromRect = fromRect;
                 this.fromPoint = fromPoint;
                 this.toRect = toRect;
@@ -101,6 +102,8 @@
                 this.label = label;
                 this.description = description;
                 this.payload = payload;
+                this.color = color;
+                this.lineStyle = lineStyle;
                 this.labelPosition = null;
             }
             
@@ -172,7 +175,7 @@
             ctx.restore();
         }
         
-        function drawCurvedConnection(fromX, fromY, toX, toY) {
+        function drawCurvedConnection(fromX, fromY, toX, toY, connection = null) {
             ctx.beginPath();
             ctx.moveTo(fromX, fromY);
             
@@ -255,9 +258,25 @@
                 const fromPoint = points.from;
                 const toPoint = points.to;
                 
-                ctx.strokeStyle = '#4ecdc4';
+                ctx.strokeStyle = conn.color || '#4ecdc4';
                 ctx.lineWidth = 2 / zoom;
-                drawCurvedConnection(fromPoint.x, fromPoint.y, toPoint.x, toPoint.y);
+                
+                // Set line style
+                const lineStyle = conn.lineStyle || 'solid';
+                if (lineStyle === 'thick-dotted') {
+                    ctx.setLineDash([8 / zoom, 8 / zoom]); // Thick dotted line
+                    ctx.lineWidth = 4 / zoom; // Make it thicker
+                } else if (lineStyle === 'dashed') {
+                    ctx.setLineDash([15 / zoom, 10 / zoom]); // Dashed line
+                } else {
+                    ctx.setLineDash([]); // Solid line
+                }
+                
+                drawCurvedConnection(fromPoint.x, fromPoint.y, toPoint.x, toPoint.y, conn);
+                
+                // Reset line dash and width
+                ctx.setLineDash([]);
+                ctx.lineWidth = conn.selected ? 3 / zoom : 2 / zoom;
                 
                 drawConnectionDot(fromPoint.x, fromPoint.y);
                 drawConnectionDot(toPoint.x, toPoint.y);
@@ -272,7 +291,17 @@
                 const hasLeftConnections = connections.some(c => c.toRect === rectangle);
                 const hasRightConnections = connections.some(c => c.fromRect === rectangle);
                 
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+                // Convert hex color to rgba with low opacity for subtle background
+                let fillColor = 'rgba(255, 255, 255, 0.1)'; // Default white
+                if (rectangle.color && rectangle.color !== '#ffffff') {
+                    const hexColor = rectangle.color;
+                    const r = parseInt(hexColor.substr(1, 2), 16);
+                    const g = parseInt(hexColor.substr(3, 2), 16);
+                    const b = parseInt(hexColor.substr(5, 2), 16);
+                    fillColor = 'rgba(' + r + ', ' + g + ', ' + b + ', 0.15)'; // Subtle 15% opacity
+                }
+                
+                ctx.fillStyle = fillColor;
                 ctx.strokeStyle = '#ffffff';
                 
                 ctx.fillRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height);
@@ -349,8 +378,8 @@
         });
         
         // Load data and initialize
-        rectangles = [{"x":110,"y":50,"width":110,"height":60,"id":"giogrll4k","name":"A","description":"Alpha","payload":"AAA\n"},{"x":290,"y":170,"width":110,"height":60,"id":"kloyyjtrh","name":"B","description":"Bravo","payload":"BBB\n"},{"x":520,"y":140,"width":110,"height":60,"id":"bkf1chd45","name":"C","description":"Charlie","payload":"CCCC\n"},{"x":680,"y":90,"width":110,"height":60,"id":"5lplcdkth","name":"D","description":"Delta","payload":"DDDD\n---eof---\n"}].map(r => {
-            const rect = new Rectangle(r.x, r.y, r.width, r.height, r.name, r.description, r.payload);
+        rectangles = [{"x":110,"y":50,"width":110,"height":60,"id":"giogrll4k","name":"A","description":"Alpha","payload":"AAA\n","color":"#d62424"},{"x":290,"y":170,"width":110,"height":60,"id":"kloyyjtrh","name":"B","description":"Bravo","payload":"BBB\n","color":"#0bad0e"},{"x":520,"y":140,"width":110,"height":60,"id":"bkf1chd45","name":"C","description":"Charlie","payload":"CCCC\n","color":"#ffffff"},{"x":680,"y":90,"width":110,"height":60,"id":"5lplcdkth","name":"D","description":"Delta","payload":"DDDD\n---eof---\n","color":"#ffffff"}].map(r => {
+            const rect = new Rectangle(r.x, r.y, r.width, r.height, r.name, r.description, r.payload, r.color);
             rect.id = r.id; // Preserve original ID
             return rect;
         });
@@ -358,7 +387,7 @@
         console.log('Loaded rectangles:', rectangles);
         
         // Load connections
-        const connectionData = [{"fromRectId":"giogrll4k","toRectId":"kloyyjtrh","id":"je3i44li4","label":"AB","description":"A to B","payload":"a->B\n","labelPosition":null},{"fromRectId":"kloyyjtrh","toRectId":"bkf1chd45","id":"1ea79jd1z","label":"BC","description":"b to c","payload":"B ----> C\n","labelPosition":null},{"fromRectId":"bkf1chd45","toRectId":"5lplcdkth","id":"a3j2gpx3e","label":"CD","description":"C to D","payload":"C --> D\n","labelPosition":null},{"fromRectId":"giogrll4k","toRectId":"bkf1chd45","id":"nh1qjstv2","label":"Bypass","description":"","payload":"","labelPosition":null}];
+        const connectionData = [{"fromRectId":"giogrll4k","toRectId":"kloyyjtrh","id":"je3i44li4","label":"AB","description":"A to B","payload":"a->B\n","color":"#4ecdc4","lineStyle":"solid","labelPosition":null},{"fromRectId":"kloyyjtrh","toRectId":"bkf1chd45","id":"1ea79jd1z","label":"BC","description":"b to c","payload":"B ----> C\n","color":"#4ecdc4","lineStyle":"dashed","labelPosition":null},{"fromRectId":"bkf1chd45","toRectId":"5lplcdkth","id":"a3j2gpx3e","label":"CD","description":"C to D","payload":"C --> D\n","color":"#4ecdc4","lineStyle":"solid","labelPosition":null},{"fromRectId":"giogrll4k","toRectId":"bkf1chd45","id":"nh1qjstv2","label":"Bypass","description":"frfwf","payload":"","color":"#4ecdc4","lineStyle":"thick-dotted","labelPosition":null}];
         console.log('Loading connections:', connectionData);
         
         connectionData.forEach(conn => {
@@ -368,7 +397,7 @@
             if (fromRect && toRect) {
                 const fromPoint = { x: fromRect.x + fromRect.width, y: fromRect.y + fromRect.height / 2 };
                 const toPoint = { x: toRect.x, y: toRect.y + toRect.height / 2 };
-                const connection = new Connection(fromRect, fromPoint, toRect, toPoint, conn.label, conn.description, conn.payload);
+                const connection = new Connection(fromRect, fromPoint, toRect, toPoint, conn.label, conn.description, conn.payload, conn.color, conn.lineStyle);
                 connection.id = conn.id;
                 if (conn.labelPosition) {
                     connection.labelPosition = conn.labelPosition;

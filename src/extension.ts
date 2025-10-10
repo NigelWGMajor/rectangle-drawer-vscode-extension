@@ -33,8 +33,19 @@ export function activate(context: vscode.ExtensionContext) {
         }
     );
 
+    // Register command to open Developer Tools
+    const openDevToolsCommand = vscode.commands.registerCommand(
+        'rectangleDrawer.openDevTools',
+        async () => {
+            // Open developer tools for the webview
+            await vscode.commands.executeCommand('workbench.action.webview.openDeveloperTools');
+            vscode.window.showInformationMessage('Developer Tools opened. You can now debug the webview.');
+        }
+    );
+
     context.subscriptions.push(openDrawingCommand);
     context.subscriptions.push(openInSidebarCommand);
+    context.subscriptions.push(openDevToolsCommand);
 }
 
 export function deactivate() {}
