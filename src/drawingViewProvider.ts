@@ -5,6 +5,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
     private static currentPanel: vscode.WebviewPanel | undefined;
     private static currentData: any = { rectangles: [], connections: [] }; // Shared data store
     private static sidebarInstance: vscode.WebviewView | undefined;
+    private static currentFilePath: string | undefined;
     private static lastSaveLocation: vscode.Uri | undefined;
     private static lastLoadLocation: vscode.Uri | undefined;
 
@@ -20,8 +21,40 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 type: 'loadData',
                 data: data
             });
+            
+            // Also update filename display if there's a current file
+            if (DrawingViewProvider.currentFilePath) {
+                DrawingViewProvider.sidebarInstance.webview.postMessage({
+                    type: 'updateFileName',
+                    filePath: DrawingViewProvider.currentFilePath
+                });
+            }
         } else {
             console.log('No sidebar instance available');
+        }
+    }
+
+    // Method to update sidebar view title
+    public static updateSidebarTitle(filePath?: string) {
+        if (filePath) {
+            const fileName = vscode.Uri.parse(filePath).fsPath.split(/[\\/]/).pop() || 'Untitled';
+            DrawingViewProvider.currentFilePath = filePath;
+            // Update view title with PIX and filename
+            vscode.commands.executeCommand('setContext', 'pixView.title', `PIX ${fileName}`);
+        } else {
+            DrawingViewProvider.currentFilePath = undefined;
+            // Reset to default title
+            vscode.commands.executeCommand('setContext', 'pixView.title', 'PIX');
+        }
+    }
+
+    // Method to update panel title
+    public static updatePanelTitle(filePath?: string) {
+        if (DrawingViewProvider.currentPanel && filePath) {
+            const fileName = vscode.Uri.parse(filePath).fsPath.split(/[\\/]/).pop() || 'Untitled';
+            DrawingViewProvider.currentPanel.title = `Pix - ${fileName}`;
+        } else if (DrawingViewProvider.currentPanel) {
+            DrawingViewProvider.currentPanel.title = 'Pix';
         }
     }
 
@@ -81,12 +114,31 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                             DrawingViewProvider.currentData = message.data;
                         }
                         // Focus the sidebar activity bar and view
-                        vscode.commands.executeCommand('workbench.view.extension.rectangleDrawer').then(() => {
+                        vscode.commands.executeCommand('workbench.view.extension.pix').then(() => {
                             // After sidebar is shown, refresh with data
                             setTimeout(() => {
                                 DrawingViewProvider.refreshSidebarWithData(DrawingViewProvider.currentData);
                             }, 200);
                         });
+                        break;
+                    case 'clearTitles':
+                        DrawingViewProvider.currentFilePath = undefined;
+                        DrawingViewProvider.updateSidebarTitle();
+                        DrawingViewProvider.updatePanelTitle();
+                        
+                        // Clear filename display in webviews
+                        if (DrawingViewProvider.currentPanel) {
+                            DrawingViewProvider.currentPanel.webview.postMessage({
+                                type: 'updateFileName',
+                                filePath: null
+                            });
+                        }
+                        if (DrawingViewProvider.sidebarInstance) {
+                            DrawingViewProvider.sidebarInstance.webview.postMessage({
+                                type: 'updateFileName',
+                                filePath: null
+                            });
+                        }
                         break;
                 }
             }
@@ -106,6 +158,14 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 DrawingViewProvider.currentPanel.webview.postMessage({ 
                     type: 'loadData', 
                     data: initialData 
+                });
+            }
+            
+            // Update filename if available
+            if (DrawingViewProvider.currentFilePath) {
+                DrawingViewProvider.currentPanel.webview.postMessage({
+                    type: 'updateFileName',
+                    filePath: DrawingViewProvider.currentFilePath
                 });
             }
             return;
@@ -131,6 +191,14 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         const dataToLoad = initialData || DrawingViewProvider.currentData;
         setTimeout(() => {
             panel.webview.postMessage({ type: 'loadData', data: dataToLoad });
+            
+            // Send filename if we have one
+            if (DrawingViewProvider.currentFilePath) {
+                panel.webview.postMessage({
+                    type: 'updateFileName',
+                    filePath: DrawingViewProvider.currentFilePath
+                });
+            }
         }, 500);
 
         panel.onDidDispose(() => {
@@ -159,7 +227,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                             DrawingViewProvider.currentData = message.data;
                         }
                         // Focus the sidebar activity bar and view
-                        vscode.commands.executeCommand('workbench.view.extension.rectangleDrawer').then(() => {
+                        vscode.commands.executeCommand('workbench.view.extension.pix').then(() => {
                             // After sidebar is shown, refresh with data
                             setTimeout(() => {
                                 DrawingViewProvider.refreshSidebarWithData(DrawingViewProvider.currentData);
@@ -167,6 +235,25 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         });
                         // Close panel after a brief delay
                         setTimeout(() => panel.dispose(), 400);
+                        break;
+                    case 'clearTitles':
+                        DrawingViewProvider.currentFilePath = undefined;
+                        DrawingViewProvider.updateSidebarTitle();
+                        DrawingViewProvider.updatePanelTitle();
+                        
+                        // Clear filename display in webviews
+                        if (DrawingViewProvider.currentPanel) {
+                            DrawingViewProvider.currentPanel.webview.postMessage({
+                                type: 'updateFileName',
+                                filePath: null
+                            });
+                        }
+                        if (DrawingViewProvider.sidebarInstance) {
+                            DrawingViewProvider.sidebarInstance.webview.postMessage({
+                                type: 'updateFileName',
+                                filePath: null
+                            });
+                        }
                         break;
                 }
             }
@@ -178,6 +265,19 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         DrawingViewProvider.currentData = data;
         // Create or show panel with data
         DrawingViewProvider.createOrShow(this._extensionUri, data);
+        
+        // Update filename in panel if there's a current file
+        if (DrawingViewProvider.currentFilePath && DrawingViewProvider.currentPanel) {
+            setTimeout(() => {
+                if (DrawingViewProvider.currentPanel) {
+                    DrawingViewProvider.currentPanel.webview.postMessage({
+                        type: 'updateFileName',
+                        filePath: DrawingViewProvider.currentFilePath
+                    });
+                }
+            }, 200);
+        }
+        
         // Close sidebar view by focusing on the panel
         vscode.commands.executeCommand('workbench.action.closeSidebar');
     }
@@ -192,19 +292,20 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             if (DrawingViewProvider.lastSaveLocation) {
                 // Use same directory as last save
                 const lastDir = vscode.Uri.joinPath(DrawingViewProvider.lastSaveLocation, '..');
-                defaultUri = vscode.Uri.joinPath(lastDir, 'rectangle-drawing.json');
+                defaultUri = vscode.Uri.joinPath(lastDir, 'drawing.pix.json');
             } else if (DrawingViewProvider.lastLoadLocation) {
                 // Use same directory as last load if no save location
                 const lastDir = vscode.Uri.joinPath(DrawingViewProvider.lastLoadLocation, '..');
-                defaultUri = vscode.Uri.joinPath(lastDir, 'rectangle-drawing.json');
+                defaultUri = vscode.Uri.joinPath(lastDir, 'drawing.pix.json');
             } else {
-                defaultUri = vscode.Uri.file('rectangle-drawing.json');
+                defaultUri = vscode.Uri.file('drawing.pix.json');
             }
             
             // Show save dialog
             const saveUri = await vscode.window.showSaveDialog({
                 defaultUri: defaultUri,
                 filters: {
+                    'Pix Files': ['pix.json'],
                     'JSON Files': ['json'],
                     'All Files': ['*']
                 }
@@ -224,6 +325,26 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
 
                 const jsonContent = JSON.stringify(saveData, null, 2);
                 await vscode.workspace.fs.writeFile(saveUri, Buffer.from(jsonContent, 'utf8'));
+                
+                // Update last save location and titles
+                DrawingViewProvider.lastSaveLocation = saveUri;
+                DrawingViewProvider.currentFilePath = saveUri.fsPath;
+                DrawingViewProvider.updateSidebarTitle(saveUri.fsPath);
+                DrawingViewProvider.updatePanelTitle(saveUri.fsPath);
+                
+                // Update filename display in webviews
+                if (DrawingViewProvider.currentPanel) {
+                    DrawingViewProvider.currentPanel.webview.postMessage({
+                        type: 'updateFileName',
+                        filePath: saveUri.fsPath
+                    });
+                }
+                if (DrawingViewProvider.sidebarInstance) {
+                    DrawingViewProvider.sidebarInstance.webview.postMessage({
+                        type: 'updateFileName',
+                        filePath: saveUri.fsPath
+                    });
+                }
                 
                 vscode.window.showInformationMessage(`Drawing saved to ${saveUri.fsPath}`);
             }
@@ -251,6 +372,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 canSelectMany: false,
                 defaultUri: defaultUri,
                 filters: {
+                    'Pix Files': ['pix.json'],
                     'JSON Files': ['json'],
                     'All Files': ['*']
                 }
@@ -273,8 +395,28 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 // Update shared data
                 DrawingViewProvider.currentData = data;
                 
+                // Update last load location and titles
+                DrawingViewProvider.lastLoadLocation = openUri[0];
+                DrawingViewProvider.currentFilePath = openUri[0].fsPath;
+                DrawingViewProvider.updateSidebarTitle(openUri[0].fsPath);
+                DrawingViewProvider.updatePanelTitle(openUri[0].fsPath);
+                
                 // Send to webview
                 webview.postMessage({ type: 'loadData', data: data });
+                
+                // Update filename display in webviews
+                if (DrawingViewProvider.currentPanel) {
+                    DrawingViewProvider.currentPanel.webview.postMessage({
+                        type: 'updateFileName',
+                        filePath: openUri[0].fsPath
+                    });
+                }
+                if (DrawingViewProvider.sidebarInstance) {
+                    DrawingViewProvider.sidebarInstance.webview.postMessage({
+                        type: 'updateFileName',
+                        filePath: openUri[0].fsPath
+                    });
+                }
                 
                 vscode.window.showInformationMessage(`Drawing loaded from ${openUri[0].fsPath}`);
             }
@@ -1133,6 +1275,11 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
     </style>
 </head>
 <body>
+    ${context === 'sidebar' ? `
+    <div style="padding: 5px 10px; background-color: var(--vscode-sideBar-background); border-bottom: 1px solid var(--vscode-sideBar-border);">
+        <span id="fileNameDisplay" style="font-size: 11px; color: var(--vscode-descriptionForeground); display: none;" title=""></span>
+    </div>
+    ` : ''}
     <div class="controls">
         <button onclick="loadDrawing()" title="Load">
             <i class="fas fa-folder-open"></i>
@@ -1164,6 +1311,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         </button>
         <span style="margin-left: 10px; font-size: ${context === 'sidebar' ? '9px' : '11px'};">
             Zoom: <span id="zoomLevel">100%</span>
+            ${context === 'panel' ? `<span id="fileNameDisplayPanel" style="margin-left: 15px; color: var(--vscode-descriptionForeground); display: none;" title=""></span>` : ''}
         </span>
     </div>
     
@@ -1174,7 +1322,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
     <div id="helpModal" class="help-modal">
         <div class="help-content">
             <div class="help-header">
-                <h3>Rectangle Drawing Tool - Help</h3>
+                <h3>Pix - Help</h3>
                 <button class="help-close" onclick="hideHelp()">&times;</button>
             </div>
             <div>
@@ -1187,13 +1335,6 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     <li><strong>Edit Properties:</strong> Right-click on rectangle or connection for options</li>
                     <li><strong>Pan View:</strong> Hold Shift and drag to pan around</li>
                     <li><strong>Zoom:</strong> Use mouse wheel to zoom in/out</li>
-                </ul>
-                <h4>Keyboard Shortcuts:</h4>
-                <ul>
-                    <li><strong>Delete:</strong> Select rectangle/connection and press Delete</li>
-                    <li><strong>Escape:</strong> Cancel current operation</li>
-                    <li><strong>Ctrl+S:</strong> Save drawing</li>
-                    <li><strong>Ctrl+O:</strong> Load drawing</li>
                 </ul>
             </div>
         </div>
@@ -2819,6 +2960,13 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             connections = [];
             selectedRect = null;
             selectedConnection = null;
+            updateFileNameDisplay(null); // Clear filename display
+            
+            // Notify extension to clear titles
+            vscode.postMessage({
+                type: 'clearTitles'
+            });
+            
             notifyDataChanged();
             draw();
         }
@@ -3024,6 +3172,49 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             }
         }
         
+        function updateFileNameDisplay(filePath) {
+            console.log('updateFileNameDisplay called with:', filePath);
+            
+            if (filePath) {
+                // Extract filename from path
+                const fileName = filePath.split(/[/\\\\]/).pop() || 'Untitled';
+                console.log('Extracted filename:', fileName);
+                
+                // Update sidebar filename display
+                const fileNameElement = document.getElementById('fileNameDisplay');
+                if (fileNameElement) {
+                    console.log('Setting sidebar filename to:', fileName);
+                    fileNameElement.textContent = fileName;
+                    fileNameElement.title = filePath;
+                    fileNameElement.style.display = 'block';
+                }
+                
+                // Update panel filename display (next to zoom)
+                const fileNameElementPanel = document.getElementById('fileNameDisplayPanel');
+                if (fileNameElementPanel) {
+                    console.log('Setting panel filename to:', fileName);
+                    fileNameElementPanel.textContent = fileName;
+                    fileNameElementPanel.title = filePath;
+                    fileNameElementPanel.style.display = 'inline';
+                }
+            } else {
+                // Clear both displays
+                const fileNameElement = document.getElementById('fileNameDisplay');
+                if (fileNameElement) {
+                    fileNameElement.textContent = '';
+                    fileNameElement.title = '';
+                    fileNameElement.style.display = 'none';
+                }
+                
+                const fileNameElementPanel = document.getElementById('fileNameDisplayPanel');
+                if (fileNameElementPanel) {
+                    fileNameElementPanel.textContent = '';
+                    fileNameElementPanel.title = '';
+                    fileNameElementPanel.style.display = 'none';
+                }
+            }
+        }
+        
         // Listen for messages from the extension
         window.addEventListener('message', event => {
             const message = event.data;
@@ -3090,6 +3281,11 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     });
                     
                     draw();
+                    break;
+                    
+                case 'updateFileName':
+                    console.log('Updating filename display:', message.filePath);
+                    updateFileNameDisplay(message.filePath);
                     break;
             }
         });

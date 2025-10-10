@@ -1,84 +1,129 @@
-# Rectangle Drawer VS Code Extension
+# Pix for VS Code
 
-A VS Code extension that allows you to draw rectangles and connect them using mouse interactions.
+A professional diagram creation extension for Visual Studio Code that allows you to draw rectangles, connect them with labeled lines, and create interactive flowcharts and diagrams.
 
 ## Features
 
-- **Draw Rectangles**: Left-click and drag to create rectangles
-- **Connect Rectangles**: Right-click and drag to connect rectangles with arrows
-- **Select Rectangles**: Click on rectangles to select them and see connection points
-- **Save/Load**: Save and load your drawings
-- **Clear Canvas**: Clear all rectangles and connections
+### 🎨 **Drawing Tools**
+- **Draw Rectangles**: Click and drag to create rectangles
+- **Connect Elements**: Create labeled connections between rectangles
+- **Move & Resize**: Drag rectangles to reposition, use handles to resize
+- **Smart Grid Snapping**: All elements snap to a 10px grid for perfect alignment
 
-## How to Use
+### 🎯 **Interactive Elements**
+- **Editable Labels**: Double-click rectangles and connections to add/edit labels
+- **Color Customization**: Choose from 13 preset colors for rectangles and connections
+- **Line Styles**: Multiple line styles including solid, dashed, dotted, and thick variations
+- **Property Dialogs**: Right-click elements to edit detailed properties
 
-1. Open the Command Palette (`Ctrl+Shift+P` or `Cmd+Shift+P`)
-2. Type "Open Rectangle Drawer" and select the command
-3. A webview will open with the drawing canvas
+### 💾 **Data Management**
+- **Save/Load**: Persistent storage with JSON format
+- **Export HTML**: Export your diagrams as standalone HTML files
+- **Auto-sync**: Seamless data transfer between sidebar and panel views
 
-### Mouse Controls
+### 🖼️ **Flexible Views**
+- **Sidebar View**: Integrated into VS Code's activity bar for quick access
+- **Panel View**: Full-screen panel for detailed work
+- **Smooth Transitions**: Switch between views while preserving your work
 
-- **Left-click and drag**: Create a new rectangle
-- **Right-click and drag**: Create a connection between rectangles
-  - Right-click on a rectangle to start the connection
-  - Drag to another rectangle to complete the connection
-- **Left-click on rectangle**: Select a rectangle to see its connection points
+### 🎪 **Advanced Features**
+- **Pan & Zoom**: Mouse wheel zoom, middle-click drag to pan
+- **Context Menus**: Right-click for element-specific options
+- **Smart Contrast**: Automatic text contrast for optimal readability
+- **Professional Icons**: Modern Font Awesome icon set
+- **Tooltips**: Helpful hover information for all tools
 
-### Buttons
+## Installation
 
-- **Clear All**: Remove all rectangles and connections
-- **Save**: Save the current drawing (currently logs to console)
-- **Load**: Load a saved drawing
+1. Download the `.vsix` file from the releases
+2. Open VS Code
+3. Press `Ctrl+Shift+P` and type "Extensions: Install from VSIX"
+4. Select the downloaded `.vsix` file
+5. Reload VS Code
+
+## Usage
+
+### Getting Started
+1. Open the Command Palette (`Ctrl+Shift+P`)
+2. Type "Pix" and select "Open in Panel" or look for the Pix icon in the activity bar
+
+### Basic Operations
+- **Create Rectangle**: Click and drag on the canvas
+- **Move Rectangle**: Drag the rectangle body
+- **Resize**: Drag the corner handles (white squares)
+- **Connect Rectangles**: Right-click first rectangle → "Start Connection" → Right-click target → "End Connection"
+- **Edit Names**: Double-click rectangles to edit labels
+- **Edit Properties**: Right-click for detailed property dialogs
+
+### Navigation
+- **Zoom**: Mouse wheel
+- **Pan**: Hold Shift and drag, or middle-click and drag
+- **Reset View**: Click the home icon in the toolbar
+
+## Toolbar Icons
+
+| Icon | Function | Description |
+|------|----------|-------------|
+| 📂 | Load | Load a saved drawing |
+| 💾 | Save | Save current drawing |
+| 🗑️ | Clear | Clear all elements |
+| 🏠 | Reset View | Reset zoom and pan |
+| 🗔 | Panel/Sidebar | Switch between views |
+| 📤 | Export | Export as HTML |
+| ❓ | Help | Show help dialog |
+
+## File Format
+
+Drawings are saved in `.pix.json` format with the following structure:
+- Rectangle data (position, size, colors, labels)
+- Connection data (endpoints, styles, labels)
+- Portable and readable JSON format
+
+## Requirements
+
+- Visual Studio Code 1.74.0 or higher
+- No additional dependencies required
 
 ## Development
 
-### Running the Extension
-
-1. Open this project in VS Code
-2. Press `F5` to open a new Extension Development Host window
-3. In the new window, open the Command Palette and run "Open Rectangle Drawer"
-
-### Building
+### Building from Source
 
 ```bash
 npm install
 npm run compile
 ```
 
-### File Structure
+### Creating VSIX Package
 
-```
-├── src/
-│   ├── extension.ts           # Main extension entry point
-│   └── drawingViewProvider.ts # Webview provider with drawing logic
-├── .vscode/
-│   ├── launch.json           # Debug configuration
-│   └── tasks.json           # Build tasks
-├── package.json             # Extension manifest
-├── tsconfig.json           # TypeScript configuration
-└── README.md              # This file
+```bash
+npm run package
 ```
 
-## Technical Details
+### Running in Development
 
-The extension uses:
-- **VS Code Webview API** for the drawing interface
-- **HTML5 Canvas** for rendering rectangles and connections
-- **TypeScript** for type-safe development
-- **CSS Custom Properties** for VS Code theme integration
+1. Open this project in VS Code
+2. Press `F5` to open Extension Development Host
+3. Test the extension in the new window
 
-The drawing canvas supports:
-- Rectangle creation with mouse drag
-- Connection points on rectangle edges (top, bottom, left, right)
-- Visual feedback for selections and connections
-- Proper event handling for left and right mouse buttons
+## Contributing
 
-## Future Enhancements
+This is an open-source project. Contributions are welcome!
 
-- Persistent storage of drawings
-- Export to various formats (PNG, SVG, JSON)
-- Multiple canvas support
-- Undo/redo functionality
-- Rectangle labeling
-- Connection styling options
-- Grid snap functionality
+## License
+
+MIT License - see LICENSE file for details
+
+## Changelog
+
+### 1.0.0
+- Initial release
+- Complete drawing functionality
+- Sidebar and panel views
+- Save/load capabilities
+- HTML export
+- Professional UI with Font Awesome icons
+- Comprehensive help system
+
+---
+
+**Enjoy creating professional diagrams directly in VS Code! 🎨**

@@ -1,12 +1,31 @@
 {
-  "name": "rectangle-drawer",
-  "displayName": "Rectangle Drawer",
-  "description": "Draw rectangles and connect them with mouse interactions",
-  "version": "0.0.1",
+  "name": "pix",
+  "displayName": "Pix",
+  "description": "Professional diagram creation tool for VS Code - Draw rectangles, connect them with labeled lines, and create interactive flowcharts and diagrams",
+  "version": "1.0.0",
+  "publisher": "nigelwgmajor",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/NigelWGMajor/rectangle-drawer-vscode-extension.git"
+  },
+  "bugs": {
+    "url": "https://github.com/NigelWGMajor/rectangle-drawer-vscode-extension/issues"
+  },
+  "homepage": "https://github.com/NigelWGMajor/rectangle-drawer-vscode-extension#readme",
+  "keywords": [
+    "diagram",
+    "flowchart",
+    "drawing",
+    "visualization",
+    "rectangles",
+    "connections",
+    "charts"
+  ],
   "engines": {
     "vscode": "^1.74.0"
   },
   "categories": [
+    "Visualization",
     "Other"
   ],
   "activationEvents": [],
@@ -14,38 +33,38 @@
   "contributes": {
     "commands": [
       {
-        "command": "rectangleDrawer.openDrawingView",
+        "command": "pix.openDrawingView",
         "title": "Open in Panel",
-        "category": "Rectangle Drawer",
+        "category": "Pix",
         "icon": "$(window)"
       },
       {
-        "command": "rectangleDrawer.openInSidebar",
+        "command": "pix.openInSidebar",
         "title": "Show in Sidebar",
-        "category": "Rectangle Drawer",
+        "category": "Pix",
         "icon": "$(layout-sidebar-left)"
       },
       {
-        "command": "rectangleDrawer.openDevTools",
+        "command": "pix.openDevTools",
         "title": "Open Developer Tools",
-        "category": "Rectangle Drawer",
+        "category": "Pix",
         "icon": "$(tools)"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "rectangleDrawer",
-          "title": "Rectangle Drawer",
+          "id": "pix",
+          "title": "Pix",
           "icon": "$(selection)"
         }
       ]
     },
     "views": {
-      "rectangleDrawer": [
+      "pix": [
         {
-          "id": "rectangleDrawerView",
-          "name": "Drawing Canvas",
+          "id": "pixView",
+          "name": "Pix",
           "type": "webview",
           "when": "true"
         }
@@ -54,22 +73,22 @@
     "menus": {
       "view/title": [
         {
-          "command": "rectangleDrawer.openDrawingView",
-          "when": "view == rectangleDrawerView",
+          "command": "pix.openDrawingView",
+          "when": "view == pixView",
           "group": "navigation"
         }
       ],
       "commandPalette": [
         {
-          "command": "rectangleDrawer.openDrawingView",
+          "command": "pix.openDrawingView",
           "when": "true"
         },
         {
-          "command": "rectangleDrawer.openInSidebar",
+          "command": "pix.openInSidebar",
           "when": "true"
         },
         {
-          "command": "rectangleDrawer.openDevTools",
+          "command": "pix.openDevTools",
           "when": "true"
         }
       ]
@@ -78,11 +97,14 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package",
+    "publish": "vsce publish"
   },
   "devDependencies": {
-    "@types/vscode": "^1.74.0",
     "@types/node": "16.x",
+    "@types/vscode": "^1.74.0",
+    "@vscode/vsce": "^2.32.0",
     "typescript": "^4.9.4"
   }
 }
