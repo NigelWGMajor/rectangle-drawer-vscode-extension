@@ -101,6 +101,9 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     case 'exportToHTML':
                         this._exportToHTML(message.data);
                         break;
+                    case 'exportToSVG':
+                        this._exportToSVG(message.data);
+                        break;
                     case 'dataChanged':
                         // Update shared data store
                         DrawingViewProvider.currentData = message.data;
@@ -217,6 +220,9 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         break;
                     case 'exportToHTML':
                         provider._exportToHTML(message.data);
+                        break;
+                    case 'exportToSVG':
+                        provider._exportToSVG(message.data);
                         break;
                     case 'dataChanged':
                         DrawingViewProvider.currentData = message.data;
@@ -460,6 +466,44 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             }
         } catch (error) {
             vscode.window.showErrorMessage(`Failed to export drawing: ${error}`);
+        }
+    }
+
+    private async _exportToSVG(data: any) {
+        try {
+            // Determine default URI for SVG export
+            let defaultUri: vscode.Uri;
+            if (DrawingViewProvider.lastSaveLocation) {
+                const lastDir = vscode.Uri.joinPath(DrawingViewProvider.lastSaveLocation, '..');
+                defaultUri = vscode.Uri.joinPath(lastDir, 'rectangle-drawing.svg');
+            } else if (DrawingViewProvider.lastLoadLocation) {
+                const lastDir = vscode.Uri.joinPath(DrawingViewProvider.lastLoadLocation, '..');
+                defaultUri = vscode.Uri.joinPath(lastDir, 'rectangle-drawing.svg');
+            } else {
+                defaultUri = vscode.Uri.file('rectangle-drawing.svg');
+            }
+
+            // Show save dialog
+            const saveUri = await vscode.window.showSaveDialog({
+                defaultUri: defaultUri,
+                filters: {
+                    'SVG Files': ['svg'],
+                    'All Files': ['*']
+                }
+            });
+
+            if (saveUri) {
+                // Generate SVG content
+                const svgContent = this._generateSVG(data);
+                await vscode.workspace.fs.writeFile(saveUri, Buffer.from(svgContent, 'utf8'));
+                
+                vscode.window.showInformationMessage(`Drawing exported to ${saveUri.fsPath}`);
+                
+                // Open in default application
+                await vscode.env.openExternal(saveUri);
+            }
+        } catch (error) {
+            vscode.window.showErrorMessage(`Failed to export SVG: ${error}`);
         }
     }
 
@@ -909,6 +953,185 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
 </html>`;
     }
 
+    private _generateSVG(data: any): string {
+        // Calculate bounding box
+        let minX = Number.MAX_VALUE;
+        let minY = Number.MAX_VALUE;
+        let maxX = Number.MIN_VALUE;
+        let maxY = Number.MIN_VALUE;
+
+        // Find bounds from rectangles
+        data.rectangles.forEach((rect: any) => {
+            minX = Math.min(minX, rect.x);
+            minY = Math.min(minY, rect.y);
+            maxX = Math.max(maxX, rect.x + rect.width);
+            maxY = Math.max(maxY, rect.y + rect.height);
+        });
+
+        // Add padding
+        const padding = 50;
+        minX -= padding;
+        minY -= padding;
+        maxX += padding;
+        maxY += padding;
+
+        const width = maxX - minX;
+        const height = maxY - minY;
+
+        // Determine if we're in dark mode (default true if not specified)
+        const darkBackground = data.darkBackground !== false;
+        const bgColor = darkBackground ? '#1e1e1e' : '#ffffff';
+
+        // Helper function to get connection points
+        const getConnectionPoints = (fromRect: any, toRect: any) => {
+            const fromPoint = { x: fromRect.x + fromRect.width, y: fromRect.y + fromRect.height / 2 };
+            const toPoint = { x: toRect.x, y: toRect.y + toRect.height / 2 };
+            return { from: fromPoint, to: toPoint };
+        };
+
+        // Helper function to create bezier path
+        const createBezierPath = (fromX: number, fromY: number, toX: number, toY: number) => {
+            const distance = Math.abs(toX - fromX);
+            const curveOffset = Math.min(distance * 0.5, 80);
+            const cp1X = fromX + curveOffset;
+            const cp1Y = fromY;
+            const cp2X = toX - curveOffset;
+            const cp2Y = toY;
+            return `M ${fromX} ${fromY} C ${cp1X} ${cp1Y} ${cp2X} ${cp2Y} ${toX} ${toY}`;
+        };
+
+        // Helper function to adjust colors for translucency simulation
+        const adjustColorForBackground = (foregroundColor: string, alpha: number = 0.9) => {
+            const hex = foregroundColor.replace('#', '');
+            const r = parseInt(hex.substr(0, 2), 16);
+            const g = parseInt(hex.substr(2, 2), 16);
+            const b = parseInt(hex.substr(4, 2), 16);
+            
+            // Get background RGB
+            const bgR = darkBackground ? 30 : 255;  // #1e1e1e vs #ffffff
+            const bgG = darkBackground ? 30 : 255;
+            const bgB = darkBackground ? 30 : 255;
+            
+            // Simulate alpha blending: result = alpha * foreground + (1 - alpha) * background
+            const finalR = Math.round(alpha * r + (1 - alpha) * bgR);
+            const finalG = Math.round(alpha * g + (1 - alpha) * bgG);
+            const finalB = Math.round(alpha * b + (1 - alpha) * bgB);
+            
+            return `#${finalR.toString(16).padStart(2, '0')}${finalG.toString(16).padStart(2, '0')}${finalB.toString(16).padStart(2, '0')}`;
+        };
+
+        // Helper function to get contrasting text color
+        const getContrastColor = (backgroundColor: string) => {
+            // Simple: text color matches the current background
+            // Dark background = light text, Light background = dark text
+            return data.darkBackground ? '#ffffff' : '#000000';
+        };
+
+        // Check if rectangles have connections for border styling
+        const hasConnections = (rectId: string, side: 'left' | 'right') => {
+            return data.connections.some((conn: any) => {
+                if (side === 'left') return conn.toRectId === rectId;
+                if (side === 'right') return conn.fromRectId === rectId;
+                return false;
+            });
+        };
+
+        // Generate SVG content without background and grid, with adjusted colors
+        const svgContent = `<?xml version="1.0" encoding="UTF-8"?>
+<svg width="${width}" height="${height}" viewBox="${minX} ${minY} ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+        <!-- Drop shadow filter -->
+        <filter id="dropShadow" x="-50%" y="-50%" width="200%" height="200%">
+            <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="rgba(0,0,0,0.3)"/>
+        </filter>
+        
+        <!-- Gradient for connection dots -->
+        <radialGradient id="dotGradient">
+            <stop offset="0%" stop-color="#4ecdc4" stop-opacity="1"/>
+            <stop offset="70%" stop-color="#4ecdc4" stop-opacity="0.8"/>
+            <stop offset="100%" stop-color="#2a9d8f" stop-opacity="1"/>
+        </radialGradient>
+        
+        <style>
+            .rectangle-main { stroke-width: 1; stroke: ${data.darkBackground ? '#cccccc' : '#333333'}; stroke-opacity: 0.8; filter: url(#dropShadow); }
+            .rectangle-left-thick { stroke-width: 5; stroke: #4ecdc4; stroke-opacity: 0.9; }
+            .rectangle-right-thick { stroke-width: 5; stroke: #4ecdc4; stroke-opacity: 0.9; }
+            .connection { stroke-width: 2; fill: none; opacity: 0.9; filter: url(#dropShadow); }
+            .connection-dashed { stroke-dasharray: 8,4; }
+            .connection-dot { fill: url(#dotGradient); stroke: #ffffff; stroke-width: 1; stroke-opacity: 0.9; filter: url(#dropShadow); }
+            .text { font-family: Arial, sans-serif; text-anchor: middle; dominant-baseline: middle; }
+            .label-bg { stroke: none; filter: url(#dropShadow); opacity: 0.95; }
+        </style>
+    </defs>
+    
+    <!-- Connections with enhanced styling -->
+    ${data.connections.map((conn: any) => {
+        const fromRect = data.rectangles.find((r: any) => r.id === conn.fromRectId);
+        const toRect = data.rectangles.find((r: any) => r.id === conn.toRectId);
+        if (!fromRect || !toRect) return '';
+        
+        const points = getConnectionPoints(fromRect, toRect);
+        const pathData = createBezierPath(points.from.x, points.from.y, points.to.x, points.to.y);
+        const dashClass = conn.lineStyle === 'dashed' ? 'connection-dashed' : '';
+        
+        let labelElement = '';
+        if (conn.label) {
+            // Calculate label position (midpoint of curve)
+            const midX = (points.from.x + points.to.x) / 2;
+            const midY = (points.from.y + points.to.y) / 2;
+            const textWidth = conn.label.length * 6 + 8; // Approximate text width
+            const adjustedLabelColor = adjustColorForBackground(conn.color, 0.95);
+            
+            labelElement = `
+                <g>
+                    <rect x="${midX - textWidth/2}" y="${midY - 8}" width="${textWidth}" height="16" 
+                          rx="8" class="label-bg" fill="${adjustedLabelColor}"/>
+                    <text x="${midX}" y="${midY}" class="text" font-size="10" 
+                          fill="${getContrastColor(conn.color)}" font-weight="500">${conn.label}</text>
+                </g>`;
+        }
+        
+        return `
+            <path d="${pathData}" class="connection ${dashClass}" stroke="${conn.color}"/>
+            <circle cx="${points.from.x}" cy="${points.from.y}" r="4" class="connection-dot"/>
+            <circle cx="${points.to.x}" cy="${points.to.y}" r="4" class="connection-dot"/>
+            ${labelElement}`;
+    }).join('')}
+    
+    <!-- Rectangles with background-adjusted colors -->
+    ${data.rectangles.map((rect: any) => {
+        // Match canvas alpha values: white=0.1, colored=0.15
+        const alpha = rect.color === '#ffffff' ? 0.1 : 0.15;
+        const adjustedColor = adjustColorForBackground(rect.color, alpha);
+        const textColor = getContrastColor(rect.color);
+        const hasLeftConn = hasConnections(rect.id, 'left');
+        const hasRightConn = hasConnections(rect.id, 'right');
+        
+        return `
+            <g>
+                <!-- Main rectangle with adjusted color -->
+                <rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" 
+                      fill="${adjustedColor}" class="rectangle-main"/>
+                
+                <!-- Enhanced left border if has connections -->
+                ${hasLeftConn ? `<line x1="${rect.x}" y1="${rect.y}" x2="${rect.x}" y2="${rect.y + rect.height}" 
+                                      class="rectangle-left-thick"/>` : ''}
+                
+                <!-- Enhanced right border if has connections -->
+                ${hasRightConn ? `<line x1="${rect.x + rect.width}" y1="${rect.y}" x2="${rect.x + rect.width}" y2="${rect.y + rect.height}" 
+                                       class="rectangle-right-thick"/>` : ''}
+                
+                <!-- Text with contrast -->
+                ${rect.name ? `<text x="${rect.x + rect.width / 2}" y="${rect.y + rect.height / 2}" 
+                               class="text" font-size="12" font-weight="500" fill="${textColor}" 
+                               opacity="0.95">${rect.name}</text>` : ''}
+            </g>`;
+    }).join('')}
+</svg>`;
+
+        return svgContent;
+    }
+
     private _getHtmlForWebview(webview: vscode.Webview, context: string = 'sidebar') {
         return `<!DOCTYPE html>
 <html lang="en">
@@ -1305,6 +1528,14 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             <i class="fas fa-file-export"></i>
             <span class="tooltip-text">Export HTML</span>
         </button>
+        <button onclick="exportToSVG()" title="Export SVG">
+            <i class="fas fa-file-image"></i>
+            <span class="tooltip-text">Export SVG</span>
+        </button>
+        <button onclick="toggleBackground()" title="Toggle Background">
+            <i class="fas fa-adjust"></i>
+            <span class="tooltip-text">Toggle Background</span>
+        </button>
         <button onclick="showHelp()" title="Help">
             <i class="fas fa-question-circle"></i>
             <span class="tooltip-text">Help</span>
@@ -1527,6 +1758,9 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         let zoom = 1;
         let panStartX = 0;
         let panStartY = 0;
+        
+        // Background toggle for printing
+        let darkBackground = true;
         
         // Grid settings
         const gridSize = 10;
@@ -2607,7 +2841,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     ctx.strokeStyle = '#6496ff';
                 } else {
                     ctx.fillStyle = fillColor;
-                    ctx.strokeStyle = '#ffffff';
+                    // Adaptive border color based on background
+                    ctx.strokeStyle = darkBackground ? '#cccccc' : '#333333';
                 }
                 
                 // Fill the rectangle
@@ -2702,12 +2937,12 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             const lineWidth = Math.max(2 / zoom, 1);
             
             // Draw text outline (stroke)
-            ctx.strokeStyle = '#000000';
+            ctx.strokeStyle = darkBackground ? '#000000' : '#ffffff';
             ctx.lineWidth = lineWidth;
             ctx.strokeText(rectangle.name, textX, textY);
             
-            // Draw the text (fill)
-            ctx.fillStyle = '#ffffff';
+            // Draw the text (fill) - color matches background
+            ctx.fillStyle = darkBackground ? '#ffffff' : '#000000';
             ctx.fillText(rectangle.name, textX, textY);
         }
         
@@ -3074,6 +3309,46 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 type: 'exportToHTML',
                 data: data
             });
+        }
+        
+        function exportToSVG() {
+            const data = {
+                rectangles: rectangles.map(r => ({
+                    x: r.x,
+                    y: r.y,
+                    width: r.width,
+                    height: r.height,
+                    id: r.id,
+                    name: r.name || '',
+                    description: r.description || '',
+                    payload: r.payload || '',
+                    color: r.color || '#ffffff'
+                })),
+                connections: connections.map(c => ({
+                    fromRectId: c.fromRect.id,
+                    toRectId: c.toRect.id,
+                    id: c.id,
+                    label: c.label || '',
+                    description: c.description || '',
+                    payload: c.payload || '',
+                    color: c.color || '#4ecdc4',
+                    lineStyle: c.lineStyle || 'solid',
+                    labelPosition: c.labelPosition
+                })),
+                darkBackground: darkBackground
+            };
+            
+            vscode.postMessage({
+                type: 'exportToSVG',
+                data: data
+            });
+        }
+        
+        function toggleBackground() {
+            darkBackground = !darkBackground;
+            document.body.style.backgroundColor = darkBackground ? '#1e1e1e' : '#ffffff';
+            canvas.style.backgroundColor = darkBackground ? '#1e1e1e' : '#ffffff';
+            draw(); // Redraw to update any grid colors
         }
         
         function openInPanel() {

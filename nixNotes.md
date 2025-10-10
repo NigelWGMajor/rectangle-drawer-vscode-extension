@@ -37,5 +37,6 @@ Lines:
 - Allow line arrows (start, end, both)
 - Allow line styles (dashed, dotted, double)
 - Position left-right edge lines sequenced by color
+  - When there is more than one line, they should be ordered by color index
 - Allow lines from nodes to top of box or text box of line
 - Allow lines from bottom to storage boxes
