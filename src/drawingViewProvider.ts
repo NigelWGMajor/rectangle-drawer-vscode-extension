@@ -2617,6 +2617,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                             selectedConnection.payload = text;
                         }
                         notifyDataChanged();
+                        draw(); // Redraw to show the payload indicator
                         console.log('Payload pasted from clipboard:', text);
                     }).catch(err => {
                         console.error('Failed to read from clipboard:', err);
