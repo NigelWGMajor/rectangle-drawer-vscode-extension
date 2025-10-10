@@ -849,9 +849,46 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 
                 drawConnectionDot(fromPoint.x, fromPoint.y);
                 drawConnectionDot(toPoint.x, toPoint.y);
-                
+
                 if (conn.label && conn.label.trim() !== '') {
                     drawConnectionLabel(conn);
+                }
+
+                // Draw payload indicator for connections with non-trivial payload
+                if (conn.payload && conn.payload.trim() !== '') {
+                    try {
+                        let indicatorPos;
+
+                        if (conn.labelPosition) {
+                            indicatorPos = conn.labelPosition;
+                        } else {
+                            indicatorPos = getBezierPoint(fromPoint.x, fromPoint.y, toPoint.x, toPoint.y, 0.5);
+                        }
+
+                        // If there's a label, position the dot to the left of it
+                        let dotX = indicatorPos.x;
+                        let dotY = indicatorPos.y;
+
+                        if (conn.label && conn.label.trim() !== '') {
+                            ctx.font = (10 / zoom) + 'px Arial';
+                            const textWidth = ctx.measureText(conn.label).width + 8 / zoom;
+                            dotX = indicatorPos.x - textWidth/2 - 10 / zoom; // Position to the left of the label
+                        }
+
+                        const indicatorSize = 6 / zoom;
+
+                        ctx.fillStyle = '#cc0000'; // Darker red color
+                        ctx.beginPath();
+                        ctx.arc(dotX, dotY, indicatorSize, 0, 2 * Math.PI);
+                        ctx.fill();
+
+                        // Add a subtle white border for better visibility
+                        ctx.strokeStyle = '#ffffff';
+                        ctx.lineWidth = 1 / zoom;
+                        ctx.stroke();
+                    } catch (e) {
+                        console.error('Error drawing connection payload indicator:', e);
+                    }
                 }
             });
             
@@ -1074,14 +1111,14 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             if (payloadRect && tooltip) {
                 console.log('Showing payload tooltip:', payloadRect.payload.substring(0, 50) + '...');
                 console.log('Tooltip element:', tooltip);
-                
+
                 // Position tooltip directly below the red dot
                 const indicatorSize = 6 / zoom;
                 const dotX = payloadRect.x + indicatorSize + 2 / zoom;
                 const dotY = payloadRect.y + payloadRect.height - indicatorSize - 2 / zoom;
                 const dotScreenX = (dotX * zoom) + panX;
                 const dotScreenY = (dotY * zoom) + panY + 15; // Just below the dot
-                
+
                 tooltip.textContent = payloadRect.payload;
                 tooltip.style.display = 'block';
                 tooltip.style.left = dotScreenX + 'px';
@@ -1097,17 +1134,94 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 tooltip.style.padding = '8px';
                 tooltip.style.lineHeight = '1.3';
                 console.log('Tooltip positioned at:', dotScreenX, dotScreenY);
-                
+
                 // Important: Return early to prevent rectangle tooltip logic from running
                 return;
-            } else {
+            }
+
+            // Check for connection payload indicator hover
+            let payloadConnection = null;
+            for (const conn of connections) {
+                if (conn.payload && conn.payload.trim() !== '') {
+                    const points = conn.getConnectionPoints();
+                    let indicatorPos;
+
+                    if (conn.labelPosition) {
+                        indicatorPos = conn.labelPosition;
+                    } else {
+                        indicatorPos = getBezierPoint(points.from.x, points.from.y, points.to.x, points.to.y, 0.5);
+                    }
+
+                    let dotX = indicatorPos.x;
+                    let dotY = indicatorPos.y;
+
+                    if (conn.label && conn.label.trim() !== '') {
+                        ctx.font = (10 / zoom) + 'px Arial';
+                        const textWidth = ctx.measureText(conn.label).width + 8 / zoom;
+                        dotX = indicatorPos.x - textWidth/2 - 10 / zoom;
+                    }
+
+                    const indicatorSize = 6 / zoom;
+                    const distance = Math.sqrt((x - dotX) ** 2 + (y - dotY) ** 2);
+
+                    if (distance <= indicatorSize) {
+                        payloadConnection = conn;
+                        canvas.style.cursor = 'pointer';
+                        break;
+                    }
+                }
+            }
+
+            if (payloadConnection && tooltip) {
+                // Position tooltip directly below the red dot
+                const points = payloadConnection.getConnectionPoints();
+                let indicatorPos;
+
+                if (payloadConnection.labelPosition) {
+                    indicatorPos = payloadConnection.labelPosition;
+                } else {
+                    indicatorPos = getBezierPoint(points.from.x, points.from.y, points.to.x, points.to.y, 0.5);
+                }
+
+                let dotX = indicatorPos.x;
+                let dotY = indicatorPos.y;
+
+                if (payloadConnection.label && payloadConnection.label.trim() !== '') {
+                    ctx.font = (10 / zoom) + 'px Arial';
+                    const textWidth = ctx.measureText(payloadConnection.label).width + 8 / zoom;
+                    dotX = indicatorPos.x - textWidth/2 - 10 / zoom;
+                }
+
+                const dotScreenX = (dotX * zoom) + panX;
+                const dotScreenY = (dotY * zoom) + panY + 15;
+
+                tooltip.textContent = payloadConnection.payload;
+                tooltip.style.display = 'block';
+                tooltip.style.left = dotScreenX + 'px';
+                tooltip.style.top = dotScreenY + 'px';
+                tooltip.style.backgroundColor = '#1e3a5f';
+                tooltip.style.color = '#00ffff';
+                tooltip.style.fontFamily = 'Consolas, "Courier New", monospace';
+                tooltip.style.fontSize = '11px';
+                tooltip.style.maxWidth = '400px';
+                tooltip.style.whiteSpace = 'pre-wrap';
+                tooltip.style.border = '1px solid #555';
+                tooltip.style.borderRadius = '4px';
+                tooltip.style.padding = '8px';
+                tooltip.style.lineHeight = '1.3';
+
+                return;
+            }
+
+            if (!payloadRect && !payloadConnection) {
                 console.log('No payload, checking regular tooltips');
                 // Reset cursor when not hovering over payload
                 canvas.style.cursor = 'crosshair';
-                
-                const hoveredRect = rectangles.find(r => r.contains(x, y));
-                if (hoveredRect && hoveredRect.description && hoveredRect.description.trim() !== '' && tooltip) {
-                    tooltip.textContent = hoveredRect.description;
+
+                // Check connections first (more specific than rectangle areas)
+                const hoveredConnection = connections.find(c => c.isNearConnection(x, y));
+                if (hoveredConnection && hoveredConnection.description && hoveredConnection.description.trim() !== '' && tooltip) {
+                    tooltip.textContent = hoveredConnection.description;
                     tooltip.style.display = 'block';
                     tooltip.style.left = (screenX + 15) + 'px';
                     tooltip.style.top = screenY + 'px';
@@ -1123,12 +1237,23 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     tooltip.style.padding = '';
                     tooltip.style.lineHeight = '';
                 } else {
-                    const hoveredConnection = connections.find(c => c.isNearConnection(x, y));
-                    if (hoveredConnection && hoveredConnection.description && hoveredConnection.description.trim() !== '' && tooltip) {
-                        tooltip.textContent = hoveredConnection.description;
+                    const hoveredRect = rectangles.find(r => r.contains(x, y));
+                    if (hoveredRect && hoveredRect.description && hoveredRect.description.trim() !== '' && tooltip) {
+                        tooltip.textContent = hoveredRect.description;
                         tooltip.style.display = 'block';
                         tooltip.style.left = (screenX + 15) + 'px';
                         tooltip.style.top = screenY + 'px';
+                        // Reset payload tooltip styling
+                        tooltip.style.backgroundColor = '';
+                        tooltip.style.color = '';
+                        tooltip.style.fontFamily = '';
+                        tooltip.style.fontSize = '';
+                        tooltip.style.maxWidth = '';
+                        tooltip.style.whiteSpace = '';
+                        tooltip.style.border = '';
+                        tooltip.style.borderRadius = '';
+                        tooltip.style.padding = '';
+                        tooltip.style.lineHeight = '';
                     } else if (tooltip) {
                         tooltip.style.display = 'none';
                     }
@@ -1162,23 +1287,52 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             const x = (screenX - panX) / zoom;
             const y = (screenY - panY) / zoom;
             
-            // Check if clicking on payload indicator
+            // Check if clicking on rectangle payload indicator
             const payloadRect = rectangles.find(r => {
                 if (!r.payload || r.payload.trim() === '') return false;
-                
+
                 const indicatorSize = 6 / zoom;
                 const indicatorX = r.x + indicatorSize + 2 / zoom;
                 const indicatorY = r.y + r.height - indicatorSize - 2 / zoom;
-                
+
                 // Check if click is within the payload indicator circle
                 const distance = Math.sqrt((x - indicatorX) ** 2 + (y - indicatorY) ** 2);
                 return distance <= indicatorSize;
             });
-            
-            if (payloadRect) {
+
+            // Check if clicking on connection payload indicator
+            const payloadConnection = connections.find(conn => {
+                if (!conn.payload || conn.payload.trim() === '') return false;
+
+                const points = conn.getConnectionPoints();
+                let indicatorPos;
+
+                if (conn.labelPosition) {
+                    indicatorPos = conn.labelPosition;
+                } else {
+                    indicatorPos = getBezierPoint(points.from.x, points.from.y, points.to.x, points.to.y, 0.5);
+                }
+
+                let dotX = indicatorPos.x;
+                let dotY = indicatorPos.y;
+
+                if (conn.label && conn.label.trim() !== '') {
+                    ctx.font = (10 / zoom) + 'px Arial';
+                    const textWidth = ctx.measureText(conn.label).width + 8 / zoom;
+                    dotX = indicatorPos.x - textWidth/2 - 10 / zoom;
+                }
+
+                const indicatorSize = 6 / zoom;
+                const distance = Math.sqrt((x - dotX) ** 2 + (y - dotY) ** 2);
+                return distance <= indicatorSize;
+            });
+
+            const payloadToCopy = payloadRect ? payloadRect.payload : (payloadConnection ? payloadConnection.payload : null);
+
+            if (payloadToCopy) {
                 // Copy payload to clipboard using browser API
                 if (navigator.clipboard) {
-                    navigator.clipboard.writeText(payloadRect.payload).then(() => {
+                    navigator.clipboard.writeText(payloadToCopy).then(() => {
                         console.log('Payload copied to clipboard');
                         // Show temporary notification
                         const notification = document.createElement('div');
@@ -1203,7 +1357,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         console.log('Clipboard API not available, falling back to manual copy');
                         // Fallback for older browsers
                         const textArea = document.createElement('textarea');
-                        textArea.value = payloadRect.payload;
+                        textArea.value = payloadToCopy;
                         document.body.appendChild(textArea);
                         textArea.select();
                         document.execCommand('copy');
@@ -2434,7 +2588,31 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                        y <= labelPos.y + labelHeight/2;
             }
         }
-        
+
+        // Standalone getBezierPoint function for use outside Connection class
+        function getBezierPoint(fromX, fromY, toX, toY, t) {
+            const distance = Math.abs(toX - fromX);
+            const curveOffset = Math.min(distance * 0.5, 80);
+
+            const cp1X = fromX + curveOffset;
+            const cp1Y = fromY;
+            const cp2X = toX - curveOffset;
+            const cp2Y = toY;
+
+            // Bezier curve formula
+            const x = Math.pow(1-t, 3) * fromX +
+                     3 * Math.pow(1-t, 2) * t * cp1X +
+                     3 * (1-t) * Math.pow(t, 2) * cp2X +
+                     Math.pow(t, 3) * toX;
+
+            const y = Math.pow(1-t, 3) * fromY +
+                     3 * Math.pow(1-t, 2) * t * cp1Y +
+                     3 * (1-t) * Math.pow(t, 2) * cp2Y +
+                     Math.pow(t, 3) * toY;
+
+            return { x, y };
+        }
+
         // Event handlers
         canvas.addEventListener('mousedown', handleMouseDown);
         canvas.addEventListener('mousemove', handleMouseMove);
@@ -2558,29 +2736,30 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             const rect = canvas.getBoundingClientRect();
             const screenX = e.clientX - rect.left;
             const screenY = e.clientY - rect.top;
-            
+
             // Convert screen coordinates to world coordinates
             const x = (screenX - panX) / zoom;
             const y = (screenY - panY) / zoom;
-            
-            // Find rectangle under mouse first
-            const clickedRect = rectangles.find(r => r.contains(x, y));
-            
-            if (clickedRect) {
-                console.log('Rectangle found for editing:', clickedRect);
-                editRectangleProperties(clickedRect);
-                return;
-            }
-            
-            // If no rectangle, check for connections
+
+            // Check for connections first (more specific than rectangle areas)
+            // This allows editing connectors even when they're inside frames
             const clickedConnection = connections.find(c => c.isNearConnection(x, y));
-            
+
             if (clickedConnection) {
                 console.log('Connection found for editing:', clickedConnection);
                 editConnectionProperties(clickedConnection);
                 return;
             }
-            
+
+            // If no connection, check for rectangle
+            const clickedRect = rectangles.find(r => r.contains(x, y));
+
+            if (clickedRect) {
+                console.log('Rectangle found for editing:', clickedRect);
+                editRectangleProperties(clickedRect);
+                return;
+            }
+
             console.log('No rectangle or connection found at click position');
         }
         
@@ -2762,26 +2941,53 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 e.preventDefault();
                 return;
             } else if (e.button === 0) { // Left click
-                // Check if clicking on payload indicator first
+                // Check if clicking on rectangle payload indicator first
                 const payloadRect = rectangles.find(r => {
                     if (!r.payload || r.payload.trim() === '') return false;
-                    
+
                     const indicatorSize = 6 / zoom;
                     const indicatorX = r.x + indicatorSize + 2 / zoom;
                     const indicatorY = r.y + r.height - indicatorSize - 2 / zoom;
-                    
+
                     // Check if click is within the payload indicator circle
                     const distance = Math.sqrt((x - indicatorX) ** 2 + (y - indicatorY) ** 2);
                     return distance <= indicatorSize;
                 });
-                
+
+                // Check if clicking on connection payload indicator
+                const payloadConnection = connections.find(conn => {
+                    if (!conn.payload || conn.payload.trim() === '') return false;
+
+                    const points = conn.getConnectionPoints();
+                    let indicatorPos;
+
+                    if (conn.labelPosition) {
+                        indicatorPos = conn.labelPosition;
+                    } else {
+                        indicatorPos = getBezierPoint(points.from.x, points.from.y, points.to.x, points.to.y, 0.5);
+                    }
+
+                    let dotX = indicatorPos.x;
+                    let dotY = indicatorPos.y;
+
+                    if (conn.label && conn.label.trim() !== '') {
+                        ctx.font = (10 / zoom) + 'px Arial';
+                        const textWidth = ctx.measureText(conn.label).width + 8 / zoom;
+                        dotX = indicatorPos.x - textWidth/2 - 10 / zoom;
+                    }
+
+                    const indicatorSize = 6 / zoom;
+                    const distance = Math.sqrt((x - dotX) ** 2 + (y - dotY) ** 2);
+                    return distance <= indicatorSize;
+                });
+
                 if (payloadRect) {
                     // Copy payload to clipboard
                     vscode.postMessage({
                         type: 'copyToClipboard',
                         text: payloadRect.payload
                     });
-                    
+
                     // Visual feedback - briefly highlight the indicator
                     const originalFillStyle = ctx.fillStyle;
                     ctx.fillStyle = '#ffaaaa';
@@ -2792,11 +2998,52 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     ctx.arc(indicatorX, indicatorY, indicatorSize, 0, 2 * Math.PI);
                     ctx.fill();
                     ctx.fillStyle = originalFillStyle;
-                    
+
                     setTimeout(() => {
                         draw(); // Redraw to remove highlight
                     }, 150);
-                    
+
+                    return; // Don't process other click logic
+                }
+
+                if (payloadConnection) {
+                    // Copy payload to clipboard
+                    vscode.postMessage({
+                        type: 'copyToClipboard',
+                        text: payloadConnection.payload
+                    });
+
+                    // Visual feedback - briefly highlight the indicator
+                    const points = payloadConnection.getConnectionPoints();
+                    let indicatorPos;
+
+                    if (payloadConnection.labelPosition) {
+                        indicatorPos = payloadConnection.labelPosition;
+                    } else {
+                        indicatorPos = getBezierPoint(points.from.x, points.from.y, points.to.x, points.to.y, 0.5);
+                    }
+
+                    let dotX = indicatorPos.x;
+                    let dotY = indicatorPos.y;
+
+                    if (payloadConnection.label && payloadConnection.label.trim() !== '') {
+                        ctx.font = (10 / zoom) + 'px Arial';
+                        const textWidth = ctx.measureText(payloadConnection.label).width + 8 / zoom;
+                        dotX = indicatorPos.x - textWidth/2 - 10 / zoom;
+                    }
+
+                    const originalFillStyle = ctx.fillStyle;
+                    ctx.fillStyle = '#ffaaaa';
+                    const indicatorSize = 6 / zoom;
+                    ctx.beginPath();
+                    ctx.arc(dotX, dotY, indicatorSize, 0, 2 * Math.PI);
+                    ctx.fill();
+                    ctx.fillStyle = originalFillStyle;
+
+                    setTimeout(() => {
+                        draw(); // Redraw to remove highlight
+                    }, 150);
+
                     return; // Don't process other click logic
                 }
                 
@@ -2928,7 +3175,40 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     }
                 }
                 
-                // Show payload tooltip
+                // Check for connection payload indicator hover
+                let payloadTooltipConnection = null;
+                for (const conn of connections) {
+                    if (conn.payload && conn.payload.trim() !== '') {
+                        const points = conn.getConnectionPoints();
+                        let indicatorPos;
+
+                        if (conn.labelPosition) {
+                            indicatorPos = conn.labelPosition;
+                        } else {
+                            indicatorPos = getBezierPoint(points.from.x, points.from.y, points.to.x, points.to.y, 0.5);
+                        }
+
+                        let dotX = indicatorPos.x;
+                        let dotY = indicatorPos.y;
+
+                        if (conn.label && conn.label.trim() !== '') {
+                            ctx.font = (10 / zoom) + 'px Arial';
+                            const textWidth = ctx.measureText(conn.label).width + 8 / zoom;
+                            dotX = indicatorPos.x - textWidth/2 - 10 / zoom;
+                        }
+
+                        const indicatorSize = 6 / zoom;
+                        const distance = Math.sqrt((x - dotX) ** 2 + (y - dotY) ** 2);
+
+                        if (distance <= indicatorSize) {
+                            payloadTooltipConnection = conn;
+                            canvas.style.cursor = 'pointer';
+                            break;
+                        }
+                    }
+                }
+
+                // Show payload tooltip for rectangle
                 if (payloadTooltipRect) {
                     console.log('Showing panel payload tooltip:', payloadTooltipRect.payload.substring(0, 50) + '...');
                     const tooltip = document.getElementById('tooltip');
@@ -2940,7 +3220,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         const dotY = payloadTooltipRect.y + payloadTooltipRect.height - indicatorSize - 2 / zoom;
                         const dotScreenX = (dotX * zoom) + panX;
                         const dotScreenY = (dotY * zoom) + panY + 15; // Just below the dot
-                        
+
                         tooltip.textContent = payloadTooltipRect.payload;
                         tooltip.style.display = 'block';
                         tooltip.style.left = dotScreenX + 'px';
@@ -2958,18 +3238,64 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         console.log('Panel tooltip positioned at:', dotScreenX, dotScreenY);
                     }
                     return; // Early return to prevent regular tooltip logic
-                } else {
+                }
+
+                // Show payload tooltip for connection
+                if (payloadTooltipConnection) {
+                    const tooltip = document.getElementById('tooltip');
+                    if (tooltip) {
+                        const points = payloadTooltipConnection.getConnectionPoints();
+                        let indicatorPos;
+
+                        if (payloadTooltipConnection.labelPosition) {
+                            indicatorPos = payloadTooltipConnection.labelPosition;
+                        } else {
+                            indicatorPos = getBezierPoint(points.from.x, points.from.y, points.to.x, points.to.y, 0.5);
+                        }
+
+                        let dotX = indicatorPos.x;
+                        let dotY = indicatorPos.y;
+
+                        if (payloadTooltipConnection.label && payloadTooltipConnection.label.trim() !== '') {
+                            ctx.font = (10 / zoom) + 'px Arial';
+                            const textWidth = ctx.measureText(payloadTooltipConnection.label).width + 8 / zoom;
+                            dotX = indicatorPos.x - textWidth/2 - 10 / zoom;
+                        }
+
+                        const dotScreenX = (dotX * zoom) + panX;
+                        const dotScreenY = (dotY * zoom) + panY + 15;
+
+                        tooltip.textContent = payloadTooltipConnection.payload;
+                        tooltip.style.display = 'block';
+                        tooltip.style.left = dotScreenX + 'px';
+                        tooltip.style.top = dotScreenY + 'px';
+                        tooltip.style.backgroundColor = '#1e3a5f';
+                        tooltip.style.color = '#00ffff';
+                        tooltip.style.fontFamily = 'Consolas, "Courier New", monospace';
+                        tooltip.style.fontSize = '11px';
+                        tooltip.style.maxWidth = '400px';
+                        tooltip.style.whiteSpace = 'pre-wrap';
+                        tooltip.style.border = '1px solid #555';
+                        tooltip.style.borderRadius = '4px';
+                        tooltip.style.padding = '8px';
+                        tooltip.style.lineHeight = '1.3';
+                    }
+                    return; // Early return to prevent regular tooltip logic
+                }
+
+                if (!payloadTooltipRect && !payloadTooltipConnection) {
                     // Reset cursor when not over payload indicator
                     if (canvas.style.cursor === 'pointer') {
                         canvas.style.cursor = 'crosshair';
                     }
                     
                     // Check for regular description tooltips
-                    const hoveredRect = rectangles.find(r => r.contains(x, y));
-                    if (hoveredRect && hoveredRect.description && hoveredRect.description.trim() !== '') {
+                    // Check connections first (more specific than rectangle areas)
+                    const hoveredConnection = connections.find(c => c.isNearConnection(x, y));
+                    if (hoveredConnection && hoveredConnection.description && hoveredConnection.description.trim() !== '') {
                         const tooltip = document.getElementById('tooltip');
                         if (tooltip) {
-                            tooltip.textContent = hoveredRect.description;
+                            tooltip.textContent = hoveredConnection.description;
                             tooltip.style.display = 'block';
                             tooltip.style.left = (screenX + 15) + 'px';
                             tooltip.style.top = screenY + 'px';
@@ -2986,11 +3312,11 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                             tooltip.style.lineHeight = '';
                         }
                     } else {
-                        const hoveredConnection = connections.find(c => c.isNearConnection(x, y));
-                        if (hoveredConnection && hoveredConnection.description && hoveredConnection.description.trim() !== '') {
+                        const hoveredRect = rectangles.find(r => r.contains(x, y));
+                        if (hoveredRect && hoveredRect.description && hoveredRect.description.trim() !== '') {
                             const tooltip = document.getElementById('tooltip');
                             if (tooltip) {
-                                tooltip.textContent = hoveredConnection.description;
+                                tooltip.textContent = hoveredRect.description;
                                 tooltip.style.display = 'block';
                                 tooltip.style.left = (screenX + 15) + 'px';
                                 tooltip.style.top = screenY + 'px';
@@ -3383,10 +3709,47 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 // Draw dots at both ends
                 drawConnectionDot(fromPoint.x, fromPoint.y, conn.selected);
                 drawConnectionDot(toPoint.x, toPoint.y, conn.selected);
-                
+
                 // Draw connection label if it exists
                 if (conn.label && conn.label.trim() !== '') {
                     drawConnectionLabel(conn);
+                }
+
+                // Draw payload indicator for connections with non-trivial payload
+                if (conn.payload && conn.payload.trim() !== '') {
+                    try {
+                        let indicatorPos;
+
+                        if (conn.labelPosition) {
+                            indicatorPos = conn.labelPosition;
+                        } else {
+                            indicatorPos = getBezierPoint(fromPoint.x, fromPoint.y, toPoint.x, toPoint.y, 0.5);
+                        }
+
+                        // If there's a label, position the dot to the left of it
+                        let dotX = indicatorPos.x;
+                        let dotY = indicatorPos.y;
+
+                        if (conn.label && conn.label.trim() !== '') {
+                            ctx.font = (10 / zoom) + 'px Arial';
+                            const textWidth = ctx.measureText(conn.label).width + 8 / zoom;
+                            dotX = indicatorPos.x - textWidth/2 - 10 / zoom; // Position to the left of the label
+                        }
+
+                        const indicatorSize = 6 / zoom;
+
+                        ctx.fillStyle = '#cc0000'; // Darker red color
+                        ctx.beginPath();
+                        ctx.arc(dotX, dotY, indicatorSize, 0, 2 * Math.PI);
+                        ctx.fill();
+
+                        // Add a subtle white border for better visibility
+                        ctx.strokeStyle = '#ffffff';
+                        ctx.lineWidth = 1 / zoom;
+                        ctx.stroke();
+                    } catch (e) {
+                        console.error('Error drawing connection payload indicator:', e);
+                    }
                 }
             });
             
