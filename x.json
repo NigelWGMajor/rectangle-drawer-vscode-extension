@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "created": "2025-10-10T13:29:11.617Z",
+  "created": "2025-10-10T13:35:39.815Z",
   "rectangles": [
     {
       "x": 110,
@@ -55,7 +55,7 @@
       "label": "AB",
       "description": "A to B",
       "payload": "a->B\n",
-      "color": "#4ecdc4",
+      "color": "#8c4ccd",
       "lineStyle": "solid",
       "labelPosition": null
     },

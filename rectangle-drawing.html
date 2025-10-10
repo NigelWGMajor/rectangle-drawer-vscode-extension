@@ -148,30 +148,27 @@
         
         function drawGrid() {
             ctx.save();
-            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.setTransform(zoom, 0, 0, zoom, panX, panY);
             
+            // Calculate visible area in world coordinates
             const startX = Math.floor((-panX) / zoom / gridSize) * gridSize;
             const startY = Math.floor((-panY) / zoom / gridSize) * gridSize;
             const endX = Math.ceil((canvas.width - panX) / zoom / gridSize) * gridSize;
             const endY = Math.ceil((canvas.height - panY) / zoom / gridSize) * gridSize;
             
-            ctx.strokeStyle = '#333333';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
+            // Set dot style - subtle gray dots
+            ctx.fillStyle = 'rgba(128, 128, 128, 0.3)';
+            const dotRadius = 1 / zoom; // Very small dots that scale with zoom
             
+            // Draw dots at each grid intersection
             for (let x = startX; x <= endX; x += gridSize) {
-                const screenX = x * zoom + panX;
-                ctx.moveTo(screenX, 0);
-                ctx.lineTo(screenX, canvas.height);
+                for (let y = startY; y <= endY; y += gridSize) {
+                    ctx.beginPath();
+                    ctx.arc(x, y, dotRadius, 0, 2 * Math.PI);
+                    ctx.fill();
+                }
             }
             
-            for (let y = startY; y <= endY; y += gridSize) {
-                const screenY = y * zoom + panY;
-                ctx.moveTo(0, screenY);
-                ctx.lineTo(canvas.width, screenY);
-            }
-            
-            ctx.stroke();
             ctx.restore();
         }
         
@@ -387,7 +384,7 @@
         console.log('Loaded rectangles:', rectangles);
         
         // Load connections
-        const connectionData = [{"fromRectId":"giogrll4k","toRectId":"kloyyjtrh","id":"je3i44li4","label":"AB","description":"A to B","payload":"a->B\n","color":"#4ecdc4","lineStyle":"solid","labelPosition":null},{"fromRectId":"kloyyjtrh","toRectId":"bkf1chd45","id":"1ea79jd1z","label":"BC","description":"b to c","payload":"B ----> C\n","color":"#4ecdc4","lineStyle":"dashed","labelPosition":null},{"fromRectId":"bkf1chd45","toRectId":"5lplcdkth","id":"a3j2gpx3e","label":"CD","description":"C to D","payload":"C --> D\n","color":"#4ecdc4","lineStyle":"solid","labelPosition":null},{"fromRectId":"giogrll4k","toRectId":"bkf1chd45","id":"nh1qjstv2","label":"Bypass","description":"frfwf","payload":"","color":"#4ecdc4","lineStyle":"thick-dotted","labelPosition":null}];
+        const connectionData = [{"fromRectId":"giogrll4k","toRectId":"kloyyjtrh","id":"je3i44li4","label":"AB","description":"A to B","payload":"a->B\n","color":"#8c4ccd","lineStyle":"solid","labelPosition":null},{"fromRectId":"kloyyjtrh","toRectId":"bkf1chd45","id":"1ea79jd1z","label":"BC","description":"b to c","payload":"B ----> C\n","color":"#4ecdc4","lineStyle":"dashed","labelPosition":null},{"fromRectId":"bkf1chd45","toRectId":"5lplcdkth","id":"a3j2gpx3e","label":"CD","description":"C to D","payload":"C --> D\n","color":"#4ecdc4","lineStyle":"solid","labelPosition":null},{"fromRectId":"giogrll4k","toRectId":"bkf1chd45","id":"nh1qjstv2","label":"Bypass","description":"","payload":"","color":"#4ecdc4","lineStyle":"thick-dotted","labelPosition":null}];
         console.log('Loading connections:', connectionData);
         
         connectionData.forEach(conn => {

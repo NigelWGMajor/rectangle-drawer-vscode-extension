@@ -523,19 +523,23 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 // Set line style
                 const lineStyle = conn.lineStyle || 'solid';
                 if (lineStyle === 'thick-dotted') {
-                    ctx.setLineDash([8 / zoom, 8 / zoom]); // Thick dotted line
+                    ctx.setLineDash([2.25 / zoom, 8 / zoom]); // Short dots with gaps (75% of previous length)
                     ctx.lineWidth = 4 / zoom; // Make it thicker
+                    ctx.lineCap = 'round'; // Round the ends to make dots
                 } else if (lineStyle === 'dashed') {
                     ctx.setLineDash([15 / zoom, 10 / zoom]); // Dashed line
+                    ctx.lineCap = 'butt'; // Normal line caps for dashes
                 } else {
                     ctx.setLineDash([]); // Solid line
+                    ctx.lineCap = 'butt'; // Normal line caps
                 }
                 
                 drawCurvedConnection(fromPoint.x, fromPoint.y, toPoint.x, toPoint.y, conn);
                 
-                // Reset line dash and width
+                // Reset line dash, width, and cap
                 ctx.setLineDash([]);
                 ctx.lineWidth = conn.selected ? 3 / zoom : 2 / zoom;
+                ctx.lineCap = 'butt';
                 
                 drawConnectionDot(fromPoint.x, fromPoint.y);
                 drawConnectionDot(toPoint.x, toPoint.y);
@@ -2153,20 +2157,24 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 // Set line style
                 const lineStyle = conn.lineStyle || 'solid';
                 if (lineStyle === 'thick-dotted') {
-                    ctx.setLineDash([8 / zoom, 8 / zoom]); // Thick dotted line
+                    ctx.setLineDash([2.25 / zoom, 8 / zoom]); // Short dots with gaps (75% of previous length)
                     ctx.lineWidth = 4 / zoom; // Make it thicker
+                    ctx.lineCap = 'round'; // Round the ends to make dots
                 } else if (lineStyle === 'dashed') {
                     ctx.setLineDash([15 / zoom, 10 / zoom]); // Dashed line
+                    ctx.lineCap = 'butt'; // Normal line caps for dashes
                 } else {
                     ctx.setLineDash([]); // Solid line
+                    ctx.lineCap = 'butt'; // Normal line caps
                 }
                 
                 // Draw curved line using bezier curve
                 drawCurvedConnection(fromPoint.x, fromPoint.y, toPoint.x, toPoint.y, conn);
                 
-                // Reset line dash and width
+                // Reset line dash, width, and cap
                 ctx.setLineDash([]);
                 ctx.lineWidth = conn.selected ? 3 / zoom : 2 / zoom;
+                ctx.lineCap = 'butt';
                 
                 // Draw dots at both ends
                 drawConnectionDot(fromPoint.x, fromPoint.y, conn.selected);
