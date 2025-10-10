@@ -65,6 +65,7 @@
         let panX = 0;
         let panY = 0;
         const gridSize = 10;
+        let darkBackground = true; // Background mode for adaptive colors
         
         // Data
         let rectangles = [];
@@ -72,7 +73,7 @@
         
         // Classes
         class Rectangle {
-            constructor(x, y, width, height, name = '', description = '', payload = '', color = '#ffffff') {
+            constructor(x, y, width, height, name = '', description = '', payload = '', color = '#ffffff', type = 'regular') {
                 this.x = x;
                 this.y = y;
                 this.width = width;
@@ -83,14 +84,46 @@
                 this.description = description;
                 this.payload = payload;
                 this.color = color;
+                this.type = type; // 'regular' or 'collection'
             }
             
             contains(x, y) {
-                return x >= this.x && x <= this.x + this.width &&
-                       y >= this.y && y <= this.y + this.height;
+                // Check main rectangle area
+                const inMainArea = x >= this.x && x <= this.x + this.width &&
+                                   y >= this.y && y <= this.y + this.height;
+                
+                // For collection boxes, also check name box area (positioned hard against upper left)
+                if (this.type === 'collection' && this.name) {
+                    const nameBoxWidth = Math.max(this.name.length * 8, 40);
+                    const nameBoxHeight = 20;
+                    const nameBoxX = this.x; // Hard against the collection box
+                    const nameBoxY = this.y; // Hard against the collection box
+                    
+                    const inNameBox = x >= nameBoxX && x <= nameBoxX + nameBoxWidth &&
+                                      y >= nameBoxY && y <= nameBoxY + nameBoxHeight;
+                    
+                    return inMainArea || inNameBox;
+                }
+                
+                return inMainArea;
+            }
+
+            isHoveringNameBox(x, y) {
+                // For collection boxes, check if hovering over the name box
+                if (this.type === 'collection' && this.name) {
+                    const nameBoxWidth = Math.max(this.name.length * 8, 40);
+                    const nameBoxHeight = 20;
+                    const nameBoxX = this.x;
+                    const nameBoxY = this.y;
+
+                    return x >= nameBoxX && x <= nameBoxX + nameBoxWidth &&
+                           y >= nameBoxY && y <= nameBoxY + nameBoxHeight;
+                }
+                // For regular rectangles, any hover counts
+                return this.contains(x, y);
             }
         }
-        
+
         class Connection {
             constructor(fromRect, fromPoint, toRect, toPoint, label = '', description = '', payload = '', color = '#4ecdc4', lineStyle = 'solid') {
                 this.fromRect = fromRect;
@@ -307,9 +340,46 @@
                 
                 drawConnectionDot(fromPoint.x, fromPoint.y);
                 drawConnectionDot(toPoint.x, toPoint.y);
-                
+
                 if (conn.label && conn.label.trim() !== '') {
                     drawConnectionLabel(conn);
+                }
+
+                // Draw payload indicator for connections with non-trivial payload
+                if (conn.payload && conn.payload.trim() !== '') {
+                    try {
+                        let indicatorPos;
+
+                        if (conn.labelPosition) {
+                            indicatorPos = conn.labelPosition;
+                        } else {
+                            indicatorPos = getBezierPoint(fromPoint.x, fromPoint.y, toPoint.x, toPoint.y, 0.5);
+                        }
+
+                        // If there's a label, position the dot to the left of it
+                        let dotX = indicatorPos.x;
+                        let dotY = indicatorPos.y;
+
+                        if (conn.label && conn.label.trim() !== '') {
+                            ctx.font = (10 / zoom) + 'px Arial';
+                            const textWidth = ctx.measureText(conn.label).width + 8 / zoom;
+                            dotX = indicatorPos.x - textWidth/2 - 10 / zoom; // Position to the left of the label
+                        }
+
+                        const indicatorSize = 6 / zoom;
+
+                        ctx.fillStyle = '#cc0000'; // Darker red color
+                        ctx.beginPath();
+                        ctx.arc(dotX, dotY, indicatorSize, 0, 2 * Math.PI);
+                        ctx.fill();
+
+                        // Add a subtle white border for better visibility
+                        ctx.strokeStyle = '#ffffff';
+                        ctx.lineWidth = 1 / zoom;
+                        ctx.stroke();
+                    } catch (e) {
+                        console.error('Error drawing connection payload indicator:', e);
+                    }
                 }
             });
             
@@ -318,61 +388,187 @@
                 const hasLeftConnections = connections.some(c => c.toRect === rectangle);
                 const hasRightConnections = connections.some(c => c.fromRect === rectangle);
                 
-                // Convert hex color to rgba with low opacity for subtle background
-                let fillColor = 'rgba(255, 255, 255, 0.1)'; // Default white
-                if (rectangle.color && rectangle.color !== '#ffffff') {
-                    const hexColor = rectangle.color;
-                    const r = parseInt(hexColor.substr(1, 2), 16);
-                    const g = parseInt(hexColor.substr(3, 2), 16);
-                    const b = parseInt(hexColor.substr(5, 2), 16);
-                    fillColor = 'rgba(' + r + ', ' + g + ', ' + b + ', 0.15)'; // Subtle 15% opacity
-                }
-                
-                ctx.fillStyle = fillColor;
-                ctx.strokeStyle = '#ffffff';
-                
-                ctx.fillRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height);
-                
-                if (hasLeftConnections || hasRightConnections) {
-                    const normalWidth = 1 / zoom;
-                    const thickWidth = 5 / zoom;
+                // Handle collection boxes differently
+                if (rectangle.type === 'collection') {
+                    // Collection boxes: use rectangle color for border, no fill for container
+                    ctx.fillStyle = 'transparent';
                     
-                    // Left edge
-                    ctx.lineWidth = hasLeftConnections ? thickWidth : normalWidth;
+                    // Use rectangle color or default to adaptive color
+                    let borderColor = rectangle.color && rectangle.color !== '#ffffff' ? rectangle.color : (darkBackground ? '#cccccc' : '#333333');
+                    if (rectangle.selected) {
+                        borderColor = '#6496ff';
+                    }
+                    
+                    ctx.strokeStyle = borderColor;
+                    ctx.setLineDash([5, 5]); // Dotted line
+                    ctx.lineWidth = rectangle.selected ? 2 / zoom : 1 / zoom;
+                    
+                    // Draw collection box with all corners rounded
+                    const radius = 10; // Collection box corner radius
                     ctx.beginPath();
-                    ctx.moveTo(rectangle.x, rectangle.y);
-                    ctx.lineTo(rectangle.x, rectangle.y + rectangle.height);
+                    ctx.roundRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height, radius);
                     ctx.stroke();
                     
-                    // Right edge
-                    ctx.lineWidth = hasRightConnections ? thickWidth : normalWidth;
-                    ctx.beginPath();
-                    ctx.moveTo(rectangle.x + rectangle.width, rectangle.y);
-                    ctx.lineTo(rectangle.x + rectangle.width, rectangle.y + rectangle.height);
-                    ctx.stroke();
+                    ctx.setLineDash([]); // Reset to solid line for other elements
                     
-                    // Top and bottom edges
-                    ctx.lineWidth = normalWidth;
-                    ctx.beginPath();
-                    ctx.moveTo(rectangle.x, rectangle.y);
-                    ctx.lineTo(rectangle.x + rectangle.width, rectangle.y);
-                    ctx.stroke();
-                    
-                    ctx.beginPath();
-                    ctx.moveTo(rectangle.x, rectangle.y + rectangle.height);
-                    ctx.lineTo(rectangle.x + rectangle.width, rectangle.y + rectangle.height);
-                    ctx.stroke();
+                    // Draw name box hard against upper left corner for collection boxes (always show for collections)
+                    if (rectangle.name) {
+                        const nameBoxWidth = Math.max(rectangle.name.length * 8, 40);
+                        const nameBoxHeight = 20;
+                        const nameBoxX = rectangle.x; // Hard against the collection box
+                        const nameBoxY = rectangle.y; // Hard against the collection box
+                        const nameRadius = nameBoxHeight / 2; // Radius = half height
+                        
+                        // Use rectangle color for name box fill, or default background
+                        let nameBoxFillColor;
+                        if (rectangle.color && rectangle.color !== '#ffffff') {
+                            nameBoxFillColor = rectangle.color;
+                        } else {
+                            nameBoxFillColor = darkBackground ? 'rgba(60, 60, 60, 0.9)' : 'rgba(240, 240, 240, 0.9)';
+                        }
+                        
+                        // Draw custom rounded rectangle (top-left, bottom-right rounded only)
+                        ctx.fillStyle = nameBoxFillColor;
+                        ctx.strokeStyle = borderColor;
+                        ctx.lineWidth = 1 / zoom;
+                        
+                        // Custom path with selective rounded corners
+                        ctx.beginPath();
+                        // Start at top-left, move clockwise
+                        ctx.moveTo(nameBoxX + nameRadius, nameBoxY); // Top edge start (after top-left curve)
+                        ctx.lineTo(nameBoxX + nameBoxWidth, nameBoxY); // Top edge to top-right (no curve)
+                        ctx.lineTo(nameBoxX + nameBoxWidth, nameBoxY + nameBoxHeight - nameRadius); // Right edge to bottom-right curve
+                        ctx.arcTo(nameBoxX + nameBoxWidth, nameBoxY + nameBoxHeight, nameBoxX + nameBoxWidth - nameRadius, nameBoxY + nameBoxHeight, nameRadius); // Bottom-right curve
+                        ctx.lineTo(nameBoxX, nameBoxY + nameBoxHeight); // Bottom edge to bottom-left (no curve)
+                        ctx.lineTo(nameBoxX, nameBoxY + nameRadius); // Left edge to top-left curve
+                        ctx.arcTo(nameBoxX, nameBoxY, nameBoxX + nameRadius, nameBoxY, nameRadius); // Top-left curve
+                        ctx.closePath();
+                        
+                        ctx.fill();
+                        ctx.stroke();
+                        
+                        // Draw name text with contrasting color
+                        const textColor = getContrastColor(nameBoxFillColor);
+                        ctx.fillStyle = textColor;
+                        ctx.font = (12 / zoom) + 'px Arial';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(rectangle.name, nameBoxX + nameBoxWidth / 2, nameBoxY + nameBoxHeight / 2);
+                    }
                 } else {
-                    ctx.lineWidth = 1 / zoom;
-                    ctx.strokeRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height);
-                }
+                    // Regular rectangles: existing behavior
+                    // Convert hex color to rgba with low opacity for subtle background
+                    let fillColor = 'rgba(255, 255, 255, 0.1)'; // Default white
+                    if (rectangle.color && rectangle.color !== '#ffffff') {
+                        const hexColor = rectangle.color;
+                        const r = parseInt(hexColor.substr(1, 2), 16);
+                        const g = parseInt(hexColor.substr(3, 2), 16);
+                        const b = parseInt(hexColor.substr(5, 2), 16);
+                        fillColor = 'rgba(' + r + ', ' + g + ', ' + b + ', 0.15)'; // Subtle 15% opacity
+                    }
+                    
+                    if (rectangle.selected) {
+                        ctx.fillStyle = 'rgba(100, 150, 255, 0.3)';
+                        ctx.strokeStyle = '#6496ff';
+                    } else {
+                        ctx.fillStyle = fillColor;
+                        // Adaptive border color based on background
+                        ctx.strokeStyle = darkBackground ? '#cccccc' : '#333333';
+                    }
+                    
+                    // Fill the rectangle
+                    ctx.fillRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height);
                 
-                if (rectangle.name && rectangle.name.trim() !== '') {
-                    drawRectangleText(rectangle);
+                    // Draw rectangle outline with variable thickness (only for regular rectangles)
+                    if (hasLeftConnections || hasRightConnections) {
+                        // Draw each edge separately with appropriate thickness
+                        const normalWidth = rectangle.selected ? 2 / zoom : 1 / zoom;
+                        const thickWidth = 5 / zoom; // 25% thicker than connection dot radius (4 * 1.25 = 5)
+                        
+                        ctx.beginPath();
+                        
+                        // Left edge (incoming connections)
+                        ctx.lineWidth = hasLeftConnections ? thickWidth : normalWidth;
+                        ctx.beginPath();
+                        ctx.moveTo(rectangle.x, rectangle.y);
+                        ctx.lineTo(rectangle.x, rectangle.y + rectangle.height);
+                        ctx.stroke();
+                        
+                        // Right edge (outgoing connections)
+                        ctx.lineWidth = hasRightConnections ? thickWidth : normalWidth;
+                        ctx.beginPath();
+                        ctx.moveTo(rectangle.x + rectangle.width, rectangle.y);
+                        ctx.lineTo(rectangle.x + rectangle.width, rectangle.y + rectangle.height);
+                        ctx.stroke();
+                        
+                        // Top and bottom edges (normal thickness)
+                        ctx.lineWidth = normalWidth;
+                        ctx.beginPath();
+                        ctx.moveTo(rectangle.x, rectangle.y);
+                        ctx.lineTo(rectangle.x + rectangle.width, rectangle.y);
+                        ctx.stroke();
+                        
+                        ctx.beginPath();
+                        ctx.moveTo(rectangle.x, rectangle.y + rectangle.height);
+                        ctx.lineTo(rectangle.x + rectangle.width, rectangle.y + rectangle.height);
+                        ctx.stroke();
+                    } else {
+                        // No connections, draw normal outline
+                        ctx.lineWidth = rectangle.selected ? 2 / zoom : 1 / zoom;
+                        ctx.strokeRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height);
+                    }
+                    
+                    // Draw rectangle name if it exists (only for regular rectangles)
+                    if (rectangle.name && rectangle.name.trim() !== '') {
+                        drawRectangleText(rectangle);
+                    }
+                } // End of regular rectangle block
+                
+                // Draw payload indicator for all rectangles with non-trivial payload
+                if (rectangle.payload && rectangle.payload.trim() !== '') {
+                    const indicatorSize = 6 / zoom; // Size of the red dot
+                    const indicatorX = rectangle.x + indicatorSize + 2 / zoom; // Bottom left corner with small margin
+                    const indicatorY = rectangle.y + rectangle.height - indicatorSize - 2 / zoom;
+                    
+                    ctx.fillStyle = '#cc0000'; // Darker red color (50% luminance)
+                    ctx.beginPath();
+                    ctx.arc(indicatorX, indicatorY, indicatorSize, 0, 2 * Math.PI);
+                    ctx.fill();
+                    
+                    // Add a subtle white border for better visibility
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = 1 / zoom;
+                    ctx.stroke();
                 }
             });
             
             ctx.restore();
+        }
+        
+        function drawRectangleText(rectangle) {
+            if (!rectangle.name || rectangle.name.trim() === '') return;
+            
+            // Set text properties
+            const fontSize = Math.max(12 / zoom, 8); // Scale font size with zoom, minimum 8px
+            ctx.font = fontSize + 'px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle'; // Center vertically like HTML export
+            
+            // Calculate text position (center of rectangle)
+            const textX = rectangle.x + rectangle.width / 2;
+            const textY = rectangle.y + rectangle.height / 2; // Center vertically
+            
+            // Draw text with outline for better readability without background
+            const lineWidth = Math.max(2 / zoom, 1);
+            
+            // Draw text outline (stroke)
+            ctx.strokeStyle = darkBackground ? '#000000' : '#ffffff';
+            ctx.lineWidth = lineWidth;
+            ctx.strokeText(rectangle.name, textX, textY);
+            
+            // Draw the text (fill) - color matches background
+            ctx.fillStyle = darkBackground ? '#ffffff' : '#000000';
+            ctx.fillText(rectangle.name, textX, textY);
         }
         
         // Mouse handling for tooltips
@@ -384,29 +580,310 @@
             const y = (screenY - panY) / zoom;
             
             const tooltip = document.getElementById('tooltip');
-            const hoveredRect = rectangles.find(r => r.contains(x, y));
             
-            if (hoveredRect && hoveredRect.description && hoveredRect.description.trim() !== '') {
-                tooltip.textContent = hoveredRect.description;
+            // Check for payload indicator hover first
+            let payloadRect = null;
+            for (const rectangle of rectangles) {
+                if (rectangle.payload && rectangle.payload.trim() !== '') {
+                    const indicatorSize = 6 / zoom;
+                    const indicatorX = rectangle.x + indicatorSize + 2 / zoom;
+                    const indicatorY = rectangle.y + rectangle.height - indicatorSize - 2 / zoom;
+                    
+                    // Check if mouse is within the payload indicator circle
+                    const distance = Math.sqrt((x - indicatorX) ** 2 + (y - indicatorY) ** 2);
+                    if (distance <= indicatorSize) {
+                        payloadRect = rectangle;
+                        canvas.style.cursor = 'pointer';
+                        break;
+                    }
+                }
+            }
+            
+            if (payloadRect && tooltip) {
+                console.log('Showing payload tooltip:', payloadRect.payload.substring(0, 50) + '...');
+                console.log('Tooltip element:', tooltip);
+
+                // Position tooltip directly below the red dot
+                const indicatorSize = 6 / zoom;
+                const dotX = payloadRect.x + indicatorSize + 2 / zoom;
+                const dotY = payloadRect.y + payloadRect.height - indicatorSize - 2 / zoom;
+                const dotScreenX = (dotX * zoom) + panX;
+                const dotScreenY = (dotY * zoom) + panY + 15; // Just below the dot
+
+                tooltip.textContent = payloadRect.payload;
                 tooltip.style.display = 'block';
-                tooltip.style.left = (screenX + 15) + 'px';
-                tooltip.style.top = screenY + 'px';
-            } else {
-                const hoveredConnection = connections.find(c => c.isNearConnection(x, y));
-                if (hoveredConnection && hoveredConnection.description && hoveredConnection.description.trim() !== '') {
-                    tooltip.textContent = hoveredConnection.description;
-                    tooltip.style.display = 'block';
-                    tooltip.style.left = (screenX + 15) + 'px';
-                    tooltip.style.top = screenY + 'px';
+                tooltip.style.left = dotScreenX + 'px';
+                tooltip.style.top = dotScreenY + 'px';
+                tooltip.style.backgroundColor = '#1e3a5f';
+                tooltip.style.color = '#00ffff';
+                tooltip.style.fontFamily = 'Consolas, "Courier New", monospace';
+                tooltip.style.fontSize = '11px';
+                tooltip.style.maxWidth = '400px';
+                tooltip.style.whiteSpace = 'pre-wrap';
+                tooltip.style.border = '1px solid #555';
+                tooltip.style.borderRadius = '4px';
+                tooltip.style.padding = '8px';
+                tooltip.style.lineHeight = '1.3';
+                console.log('Tooltip positioned at:', dotScreenX, dotScreenY);
+
+                // Important: Return early to prevent rectangle tooltip logic from running
+                return;
+            }
+
+            // Check for connection payload indicator hover
+            let payloadConnection = null;
+            for (const conn of connections) {
+                if (conn.payload && conn.payload.trim() !== '') {
+                    const points = conn.getConnectionPoints();
+                    let indicatorPos;
+
+                    if (conn.labelPosition) {
+                        indicatorPos = conn.labelPosition;
+                    } else {
+                        indicatorPos = getBezierPoint(points.from.x, points.from.y, points.to.x, points.to.y, 0.5);
+                    }
+
+                    let dotX = indicatorPos.x;
+                    let dotY = indicatorPos.y;
+
+                    if (conn.label && conn.label.trim() !== '') {
+                        ctx.font = (10 / zoom) + 'px Arial';
+                        const textWidth = ctx.measureText(conn.label).width + 8 / zoom;
+                        dotX = indicatorPos.x - textWidth/2 - 10 / zoom;
+                    }
+
+                    const indicatorSize = 6 / zoom;
+                    const distance = Math.sqrt((x - dotX) ** 2 + (y - dotY) ** 2);
+
+                    if (distance <= indicatorSize) {
+                        payloadConnection = conn;
+                        canvas.style.cursor = 'pointer';
+                        break;
+                    }
+                }
+            }
+
+            if (payloadConnection && tooltip) {
+                // Position tooltip directly below the red dot
+                const points = payloadConnection.getConnectionPoints();
+                let indicatorPos;
+
+                if (payloadConnection.labelPosition) {
+                    indicatorPos = payloadConnection.labelPosition;
                 } else {
-                    tooltip.style.display = 'none';
+                    indicatorPos = getBezierPoint(points.from.x, points.from.y, points.to.x, points.to.y, 0.5);
+                }
+
+                let dotX = indicatorPos.x;
+                let dotY = indicatorPos.y;
+
+                if (payloadConnection.label && payloadConnection.label.trim() !== '') {
+                    ctx.font = (10 / zoom) + 'px Arial';
+                    const textWidth = ctx.measureText(payloadConnection.label).width + 8 / zoom;
+                    dotX = indicatorPos.x - textWidth/2 - 10 / zoom;
+                }
+
+                const dotScreenX = (dotX * zoom) + panX;
+                const dotScreenY = (dotY * zoom) + panY + 15;
+
+                tooltip.textContent = payloadConnection.payload;
+                tooltip.style.display = 'block';
+                tooltip.style.left = dotScreenX + 'px';
+                tooltip.style.top = dotScreenY + 'px';
+                tooltip.style.backgroundColor = '#1e3a5f';
+                tooltip.style.color = '#00ffff';
+                tooltip.style.fontFamily = 'Consolas, "Courier New", monospace';
+                tooltip.style.fontSize = '11px';
+                tooltip.style.maxWidth = '400px';
+                tooltip.style.whiteSpace = 'pre-wrap';
+                tooltip.style.border = '1px solid #555';
+                tooltip.style.borderRadius = '4px';
+                tooltip.style.padding = '8px';
+                tooltip.style.lineHeight = '1.3';
+
+                return;
+            }
+
+            if (!payloadRect && !payloadConnection) {
+                console.log('No payload, checking regular tooltips');
+                // Reset cursor when not hovering over payload
+                canvas.style.cursor = 'crosshair';
+
+                // Check connections first (more specific than rectangle areas)
+                // Check both the connection line AND the label area
+                const hoveredConnection = connections.find(c => c.isNearConnection(x, y) || c.isLabelClicked(x, y));
+
+                // If we found a connection (even without description), don't check rectangles
+                if (hoveredConnection) {
+                    if (hoveredConnection.description && hoveredConnection.description.trim() !== '' && tooltip) {
+                        tooltip.textContent = hoveredConnection.description;
+                        tooltip.style.display = 'block';
+                        tooltip.style.left = (screenX + 15) + 'px';
+                        tooltip.style.top = screenY + 'px';
+                        // Reset payload tooltip styling
+                        tooltip.style.backgroundColor = '';
+                        tooltip.style.color = '';
+                        tooltip.style.fontFamily = '';
+                        tooltip.style.fontSize = '';
+                        tooltip.style.maxWidth = '';
+                        tooltip.style.whiteSpace = '';
+                        tooltip.style.border = '';
+                        tooltip.style.borderRadius = '';
+                        tooltip.style.padding = '';
+                        tooltip.style.lineHeight = '';
+                    } else if (tooltip) {
+                        // Connection found but no description - hide tooltip
+                        tooltip.style.display = 'none';
+                    }
+                    return; // Early return - connection found, stop processing
+                } else {
+                    // No connection found - check for rectangles
+                    // For rectangles, only show tooltip when hovering over name box (for collections/frames)
+                    const hoveredRect = rectangles.find(r => r.isHoveringNameBox(x, y));
+                    if (hoveredRect && hoveredRect.description && hoveredRect.description.trim() !== '' && tooltip) {
+                        tooltip.textContent = hoveredRect.description;
+                        tooltip.style.display = 'block';
+                        tooltip.style.left = (screenX + 15) + 'px';
+                        tooltip.style.top = screenY + 'px';
+                        // Reset payload tooltip styling
+                        tooltip.style.backgroundColor = '';
+                        tooltip.style.color = '';
+                        tooltip.style.fontFamily = '';
+                        tooltip.style.fontSize = '';
+                        tooltip.style.maxWidth = '';
+                        tooltip.style.whiteSpace = '';
+                        tooltip.style.border = '';
+                        tooltip.style.borderRadius = '';
+                        tooltip.style.padding = '';
+                        tooltip.style.lineHeight = '';
+                    } else if (tooltip) {
+                        tooltip.style.display = 'none';
+                    }
                 }
             }
         });
         
+        // Tooltip helper functions
+        function showTooltip(screenX, screenY, text) {
+            const tooltip = document.getElementById('tooltip');
+            if (tooltip) {
+                tooltip.textContent = text;
+                tooltip.style.display = 'block';
+                tooltip.style.left = (screenX + 15) + 'px';
+                tooltip.style.top = screenY + 'px';
+            }
+        }
+        
+        function hideTooltip() {
+            const tooltip = document.getElementById('tooltip');
+            if (tooltip) {
+                tooltip.style.display = 'none';
+            }
+        }
+        
+        // Click handling for payload indicators
+        canvas.addEventListener('click', function(e) {
+            const rect = canvas.getBoundingClientRect();
+            const screenX = e.clientX - rect.left;
+            const screenY = e.clientY - rect.top;
+            const x = (screenX - panX) / zoom;
+            const y = (screenY - panY) / zoom;
+            
+            // Check if clicking on rectangle payload indicator
+            const payloadRect = rectangles.find(r => {
+                if (!r.payload || r.payload.trim() === '') return false;
+
+                const indicatorSize = 6 / zoom;
+                const indicatorX = r.x + indicatorSize + 2 / zoom;
+                const indicatorY = r.y + r.height - indicatorSize - 2 / zoom;
+
+                // Check if click is within the payload indicator circle
+                const distance = Math.sqrt((x - indicatorX) ** 2 + (y - indicatorY) ** 2);
+                return distance <= indicatorSize;
+            });
+
+            // Check if clicking on connection payload indicator
+            const payloadConnection = connections.find(conn => {
+                if (!conn.payload || conn.payload.trim() === '') return false;
+
+                const points = conn.getConnectionPoints();
+                let indicatorPos;
+
+                if (conn.labelPosition) {
+                    indicatorPos = conn.labelPosition;
+                } else {
+                    indicatorPos = getBezierPoint(points.from.x, points.from.y, points.to.x, points.to.y, 0.5);
+                }
+
+                let dotX = indicatorPos.x;
+                let dotY = indicatorPos.y;
+
+                if (conn.label && conn.label.trim() !== '') {
+                    ctx.font = (10 / zoom) + 'px Arial';
+                    const textWidth = ctx.measureText(conn.label).width + 8 / zoom;
+                    dotX = indicatorPos.x - textWidth/2 - 10 / zoom;
+                }
+
+                const indicatorSize = 6 / zoom;
+                const distance = Math.sqrt((x - dotX) ** 2 + (y - dotY) ** 2);
+                return distance <= indicatorSize;
+            });
+
+            const payloadToCopy = payloadRect ? payloadRect.payload : (payloadConnection ? payloadConnection.payload : null);
+
+            if (payloadToCopy) {
+                // Copy payload to clipboard using browser API
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(payloadToCopy).then(() => {
+                        console.log('Payload copied to clipboard');
+                        // Show temporary notification
+                        const notification = document.createElement('div');
+                        notification.textContent = 'Payload copied to clipboard!';
+                        notification.style.cssText = `
+                            position: fixed;
+                            top: 20px;
+                            right: 20px;
+                            background: #4caf50;
+                            color: white;
+                            padding: 10px 15px;
+                            border-radius: 4px;
+                            font-size: 12px;
+                            z-index: 9999;
+                            animation: fadeInOut 2s ease-in-out;
+                        `;
+                        document.body.appendChild(notification);
+                        setTimeout(() => {
+                            document.body.removeChild(notification);
+                        }, 2000);
+                    }).catch(() => {
+                        console.log('Clipboard API not available, falling back to manual copy');
+                        // Fallback for older browsers
+                        const textArea = document.createElement('textarea');
+                        textArea.value = payloadToCopy;
+                        document.body.appendChild(textArea);
+                        textArea.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(textArea);
+                    });
+                }
+            }
+        });
+        
+        // Add CSS for the notification animation
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes fadeInOut {
+                0% { opacity: 0; transform: translateY(-10px); }
+                20% { opacity: 1; transform: translateY(0); }
+                80% { opacity: 1; transform: translateY(0); }
+                100% { opacity: 0; transform: translateY(-10px); }
+            }
+        `;
+        document.head.appendChild(style);
+        
         // Load data and initialize
-        rectangles = [{"x":110,"y":50,"width":110,"height":60,"id":"giogrll4k","name":"A","description":"Alpha","payload":"AAA\n","color":"#d62424"},{"x":290,"y":170,"width":110,"height":60,"id":"kloyyjtrh","name":"B","description":"Bravo","payload":"BBB\n","color":"#0bad0e"},{"x":520,"y":140,"width":110,"height":60,"id":"bkf1chd45","name":"C","description":"Charlie","payload":"CCCC\n","color":"#ffffff"},{"x":680,"y":90,"width":110,"height":60,"id":"5lplcdkth","name":"D","description":"Delta","payload":"DDDD\n---eof---\n","color":"#ffffff"}].map(r => {
-            const rect = new Rectangle(r.x, r.y, r.width, r.height, r.name, r.description, r.payload, r.color);
+        rectangles = [{"x":110,"y":50,"width":110,"height":60,"id":"giogrll4k","name":"A","description":"Alpha","payload":"AAA\n","color":"#d62424","type":"regular"},{"x":290,"y":170,"width":110,"height":60,"id":"kloyyjtrh","name":"B","description":"Bravo","payload":"BBB\n","color":"#0bad0e","type":"regular"},{"x":520,"y":140,"width":110,"height":60,"id":"bkf1chd45","name":"C","description":"Charlie","payload":"CCCC\n","color":"#ffffff","type":"regular"},{"x":680,"y":90,"width":110,"height":60,"id":"5lplcdkth","name":"D","description":"Delta","payload":"🎨 Drawing Tools\nDraw Rectangles: Click and drag to create rectangles\nConnect Elements: Create labeled connections between rectangles\nMove & Resize: Drag rectangles to reposition, use handles to resize\nSmart Grid Snapping: All elements snap to a 10px grid for perfect alignment\n\n","color":"#ffffff","type":"regular"},{"x":80,"y":30,"width":780,"height":280,"id":"0mzl9piv4","name":" frame","description":"framed hint","payload":"dcadccx","color":"#ffffff","type":"collection"}].map(r => {
+            const rect = new Rectangle(r.x, r.y, r.width, r.height, r.name, r.description, r.payload, r.color, r.type);
             rect.id = r.id; // Preserve original ID
             return rect;
         });
@@ -414,7 +891,7 @@
         console.log('Loaded rectangles:', rectangles);
         
         // Load connections
-        const connectionData = [{"fromRectId":"giogrll4k","toRectId":"kloyyjtrh","id":"je3i44li4","label":"AB","description":"A to B","payload":"a->B\n","color":"#8c4ccd","lineStyle":"solid","labelPosition":null},{"fromRectId":"kloyyjtrh","toRectId":"bkf1chd45","id":"1ea79jd1z","label":"BC","description":"b to c","payload":"B ----> C\n","color":"#44ff44","lineStyle":"dashed","labelPosition":null},{"fromRectId":"bkf1chd45","toRectId":"5lplcdkth","id":"a3j2gpx3e","label":"CD","description":"C to D","payload":"C --> D\n","color":"#4ecdc4","lineStyle":"solid","labelPosition":null},{"fromRectId":"giogrll4k","toRectId":"bkf1chd45","id":"nh1qjstv2","label":"Bypass","description":"","payload":"","color":"#00ffff","lineStyle":"thick-dotted","labelPosition":null}];
+        const connectionData = [{"fromRectId":"giogrll4k","toRectId":"kloyyjtrh","id":"je3i44li4","label":"AB","description":"A to B","payload":"a->B\n","color":"#8c4ccd","lineStyle":"solid","labelPosition":null},{"fromRectId":"kloyyjtrh","toRectId":"bkf1chd45","id":"1ea79jd1z","label":"BC","description":"b to c","payload":"B ----> C\n","color":"#4ecdc4","lineStyle":"dashed","labelPosition":null},{"fromRectId":"bkf1chd45","toRectId":"5lplcdkth","id":"a3j2gpx3e","label":"CD","description":"C to D","payload":"C --> D\n","color":"#4ecdc4","lineStyle":"solid","labelPosition":null},{"fromRectId":"giogrll4k","toRectId":"bkf1chd45","id":"nh1qjstv2","label":"Bypass","description":"A to B","payload":"","color":"#4ecdc4","lineStyle":"thick-dotted","labelPosition":null}];
         console.log('Loading connections:', connectionData);
         
         connectionData.forEach(conn => {

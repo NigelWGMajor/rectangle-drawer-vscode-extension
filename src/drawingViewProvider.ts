@@ -681,8 +681,34 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 }
                 return false;
             }
+
+            isLabelClicked(x, y) {
+                if (!this.label || this.label.trim() === '') return false;
+
+                const points = this.getConnectionPoints();
+                let labelPos;
+
+                if (this.labelPosition) {
+                    labelPos = this.labelPosition;
+                } else {
+                    labelPos = getBezierPoint(points.from.x, points.from.y, points.to.x, points.to.y, 0.5);
+                }
+
+                // Calculate label dimensions accurately
+                const fontSize = Math.max(10 / zoom, 6);
+                ctx.font = fontSize + 'px Arial';
+                const textMetrics = ctx.measureText(this.label);
+                const textWidth = textMetrics.width;
+                const labelWidth = textWidth + 8 / zoom;
+                const labelHeight = fontSize + 4 / zoom;
+
+                return x >= labelPos.x - labelWidth/2 &&
+                       x <= labelPos.x + labelWidth/2 &&
+                       y >= labelPos.y - labelHeight/2 &&
+                       y <= labelPos.y + labelHeight/2;
+            }
         }
-        
+
         function getBezierPoint(fromX, fromY, toX, toY, t) {
             const distance = Math.abs(toX - fromX);
             const curveOffset = Math.min(distance * 0.5, 80);
