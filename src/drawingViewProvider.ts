@@ -104,6 +104,10 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     case 'exportToSVG':
                         this._exportToSVG(message.data);
                         break;
+                    case 'copyToClipboard':
+                        vscode.env.clipboard.writeText(message.text);
+                        vscode.window.showInformationMessage('Payload copied to clipboard');
+                        break;
                     case 'dataChanged':
                         // Update shared data store
                         DrawingViewProvider.currentData = message.data;
@@ -223,6 +227,10 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         break;
                     case 'exportToSVG':
                         provider._exportToSVG(message.data);
+                        break;
+                    case 'copyToClipboard':
+                        vscode.env.clipboard.writeText(message.text);
+                        vscode.window.showInformationMessage('Payload copied to clipboard');
                         break;
                     case 'dataChanged':
                         DrawingViewProvider.currentData = message.data;
@@ -987,6 +995,23 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         drawRectangleText(rectangle);
                     }
                 } // End of regular rectangle block
+                
+                // Draw payload indicator for all rectangles with non-trivial payload
+                if (rectangle.payload && rectangle.payload.trim() !== '') {
+                    const indicatorSize = 6 / zoom; // Size of the red dot
+                    const indicatorX = rectangle.x + indicatorSize + 2 / zoom; // Bottom left corner with small margin
+                    const indicatorY = rectangle.y + rectangle.height - indicatorSize - 2 / zoom;
+                    
+                    ctx.fillStyle = '#cc0000'; // Darker red color (50% luminance)
+                    ctx.beginPath();
+                    ctx.arc(indicatorX, indicatorY, indicatorSize, 0, 2 * Math.PI);
+                    ctx.fill();
+                    
+                    // Add a subtle white border for better visibility
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = 1 / zoom;
+                    ctx.stroke();
+                }
             });
             
             ctx.restore();
@@ -1027,25 +1052,143 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             const y = (screenY - panY) / zoom;
             
             const tooltip = document.getElementById('tooltip');
-            const hoveredRect = rectangles.find(r => r.contains(x, y));
             
-            if (hoveredRect && hoveredRect.description && hoveredRect.description.trim() !== '') {
-                tooltip.textContent = hoveredRect.description;
+            // Check for payload indicator hover first
+            let payloadRect = null;
+            for (const rectangle of rectangles) {
+                if (rectangle.payload && rectangle.payload.trim() !== '') {
+                    const indicatorSize = 6 / zoom;
+                    const indicatorX = rectangle.x + indicatorSize + 2 / zoom;
+                    const indicatorY = rectangle.y + rectangle.height - indicatorSize - 2 / zoom;
+                    
+                    // Check if mouse is within the payload indicator circle
+                    const distance = Math.sqrt((x - indicatorX) ** 2 + (y - indicatorY) ** 2);
+                    if (distance <= indicatorSize) {
+                        payloadRect = rectangle;
+                        canvas.style.cursor = 'pointer';
+                        break;
+                    }
+                }
+            }
+            
+            if (payloadRect && tooltip) {
+                tooltip.textContent = payloadRect.payload;
                 tooltip.style.display = 'block';
                 tooltip.style.left = (screenX + 15) + 'px';
                 tooltip.style.top = screenY + 'px';
             } else {
-                const hoveredConnection = connections.find(c => c.isNearConnection(x, y));
-                if (hoveredConnection && hoveredConnection.description && hoveredConnection.description.trim() !== '') {
-                    tooltip.textContent = hoveredConnection.description;
+                console.log('No payload, checking regular tooltips');
+                // Reset cursor when not hovering over payload
+                canvas.style.cursor = 'crosshair';
+                
+                const hoveredRect = rectangles.find(r => r.contains(x, y));
+                if (hoveredRect && hoveredRect.description && hoveredRect.description.trim() !== '' && tooltip) {
+                    tooltip.textContent = hoveredRect.description;
                     tooltip.style.display = 'block';
                     tooltip.style.left = (screenX + 15) + 'px';
                     tooltip.style.top = screenY + 'px';
                 } else {
-                    tooltip.style.display = 'none';
+                    const hoveredConnection = connections.find(c => c.isNearConnection(x, y));
+                    if (hoveredConnection && hoveredConnection.description && hoveredConnection.description.trim() !== '' && tooltip) {
+                        tooltip.textContent = hoveredConnection.description;
+                        tooltip.style.display = 'block';
+                        tooltip.style.left = (screenX + 15) + 'px';
+                        tooltip.style.top = screenY + 'px';
+                    } else if (tooltip) {
+                        tooltip.style.display = 'none';
+                    }
                 }
             }
         });
+        
+        // Tooltip helper functions
+        function showTooltip(screenX, screenY, text) {
+            const tooltip = document.getElementById('tooltip');
+            if (tooltip) {
+                tooltip.textContent = text;
+                tooltip.style.display = 'block';
+                tooltip.style.left = (screenX + 15) + 'px';
+                tooltip.style.top = screenY + 'px';
+            }
+        }
+        
+        function hideTooltip() {
+            const tooltip = document.getElementById('tooltip');
+            if (tooltip) {
+                tooltip.style.display = 'none';
+            }
+        }
+        
+        // Click handling for payload indicators
+        canvas.addEventListener('click', function(e) {
+            const rect = canvas.getBoundingClientRect();
+            const screenX = e.clientX - rect.left;
+            const screenY = e.clientY - rect.top;
+            const x = (screenX - panX) / zoom;
+            const y = (screenY - panY) / zoom;
+            
+            // Check if clicking on payload indicator
+            const payloadRect = rectangles.find(r => {
+                if (!r.payload || r.payload.trim() === '') return false;
+                
+                const indicatorSize = 6 / zoom;
+                const indicatorX = r.x + indicatorSize + 2 / zoom;
+                const indicatorY = r.y + r.height - indicatorSize - 2 / zoom;
+                
+                // Check if click is within the payload indicator circle
+                const distance = Math.sqrt((x - indicatorX) ** 2 + (y - indicatorY) ** 2);
+                return distance <= indicatorSize;
+            });
+            
+            if (payloadRect) {
+                // Copy payload to clipboard using browser API
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(payloadRect.payload).then(() => {
+                        console.log('Payload copied to clipboard');
+                        // Show temporary notification
+                        const notification = document.createElement('div');
+                        notification.textContent = 'Payload copied to clipboard!';
+                        notification.style.cssText = \`
+                            position: fixed;
+                            top: 20px;
+                            right: 20px;
+                            background: #4caf50;
+                            color: white;
+                            padding: 10px 15px;
+                            border-radius: 4px;
+                            font-size: 12px;
+                            z-index: 9999;
+                            animation: fadeInOut 2s ease-in-out;
+                        \`;
+                        document.body.appendChild(notification);
+                        setTimeout(() => {
+                            document.body.removeChild(notification);
+                        }, 2000);
+                    }).catch(() => {
+                        console.log('Clipboard API not available, falling back to manual copy');
+                        // Fallback for older browsers
+                        const textArea = document.createElement('textarea');
+                        textArea.value = payloadRect.payload;
+                        document.body.appendChild(textArea);
+                        textArea.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(textArea);
+                    });
+                }
+            }
+        });
+        
+        // Add CSS for the notification animation
+        const style = document.createElement('style');
+        style.textContent = \`
+            @keyframes fadeInOut {
+                0% { opacity: 0; transform: translateY(-10px); }
+                20% { opacity: 1; transform: translateY(0); }
+                80% { opacity: 1; transform: translateY(0); }
+                100% { opacity: 0; transform: translateY(-10px); }
+            }
+        \`;
+        document.head.appendChild(style);
         
         // Load data and initialize
         rectangles = ${JSON.stringify(data.rectangles)}.map(r => {
@@ -1303,6 +1446,13 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                               fill="${textColor}" 
                               text-anchor="middle" dominant-baseline="middle">${rect.name}</text>
                     </g>` : ''}
+                    
+                    <!-- Payload indicator for collection boxes -->
+                    ${rect.payload && rect.payload.trim() !== '' ? `
+                    <circle cx="${rect.x + 8}" cy="${rect.y + rect.height - 8}" r="6" 
+                            fill="#cc0000" stroke="#ffffff" stroke-width="1">
+                        <title>${rect.payload}</title>
+                    </circle>` : ''}
                 </g>`;
         } else {
             // Regular rectangle
@@ -1324,6 +1474,13 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     ${rect.name ? `<text x="${rect.x + rect.width / 2}" y="${rect.y + rect.height / 2}" 
                                    class="text" font-size="12" font-weight="500" fill="${textColor}" 
                                    opacity="0.95">${rect.name}</text>` : ''}
+                    
+                    <!-- Payload indicator -->
+                    ${rect.payload && rect.payload.trim() !== '' ? `
+                    <circle cx="${rect.x + 8}" cy="${rect.y + rect.height - 8}" r="6" 
+                            fill="#cc0000" stroke="#ffffff" stroke-width="1">
+                        <title>${rect.payload}</title>
+                    </circle>` : ''}
                 </g>`;
         }
     }).join('')}
@@ -2569,6 +2726,44 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 e.preventDefault();
                 return;
             } else if (e.button === 0) { // Left click
+                // Check if clicking on payload indicator first
+                const payloadRect = rectangles.find(r => {
+                    if (!r.payload || r.payload.trim() === '') return false;
+                    
+                    const indicatorSize = 6 / zoom;
+                    const indicatorX = r.x + indicatorSize + 2 / zoom;
+                    const indicatorY = r.y + r.height - indicatorSize - 2 / zoom;
+                    
+                    // Check if click is within the payload indicator circle
+                    const distance = Math.sqrt((x - indicatorX) ** 2 + (y - indicatorY) ** 2);
+                    return distance <= indicatorSize;
+                });
+                
+                if (payloadRect) {
+                    // Copy payload to clipboard
+                    vscode.postMessage({
+                        type: 'copyToClipboard',
+                        text: payloadRect.payload
+                    });
+                    
+                    // Visual feedback - briefly highlight the indicator
+                    const originalFillStyle = ctx.fillStyle;
+                    ctx.fillStyle = '#ffaaaa';
+                    const indicatorSize = 6 / zoom;
+                    const indicatorX = payloadRect.x + indicatorSize + 2 / zoom;
+                    const indicatorY = payloadRect.y + payloadRect.height - indicatorSize - 2 / zoom;
+                    ctx.beginPath();
+                    ctx.arc(indicatorX, indicatorY, indicatorSize, 0, 2 * Math.PI);
+                    ctx.fill();
+                    ctx.fillStyle = originalFillStyle;
+                    
+                    setTimeout(() => {
+                        draw(); // Redraw to remove highlight
+                    }, 150);
+                    
+                    return; // Don't process other click logic
+                }
+                
                 // Check if clicking on connection label first
                 let labelConnection = null;
                 for (const conn of connections) {
@@ -2676,6 +2871,72 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             const x = (screenX - panX) / zoom;
             const y = (screenY - panY) / zoom;
             
+            // Check for payload indicator hover for tooltip
+            if (!isDragging && !isResizing && !isDrawing && !isConnecting && !isPanning) {
+                let payloadTooltipRect = null;
+                
+                // Check if hovering over a payload indicator
+                for (const rectangle of rectangles) {
+                    if (rectangle.payload && rectangle.payload.trim() !== '') {
+                        const indicatorSize = 6 / zoom;
+                        const indicatorX = rectangle.x + indicatorSize + 2 / zoom;
+                        const indicatorY = rectangle.y + rectangle.height - indicatorSize - 2 / zoom;
+                        
+                        // Check if mouse is within the payload indicator circle
+                        const distance = Math.sqrt((x - indicatorX) ** 2 + (y - indicatorY) ** 2);
+                        if (distance <= indicatorSize) {
+                            payloadTooltipRect = rectangle;
+                            canvas.style.cursor = 'pointer';
+                            break;
+                        }
+                    }
+                }
+                
+                // Show payload tooltip
+                if (payloadTooltipRect) {
+                    const tooltip = document.getElementById('tooltip');
+                    if (tooltip) {
+                        tooltip.textContent = payloadTooltipRect.payload;
+                        tooltip.style.display = 'block';
+                        tooltip.style.left = (screenX + 15) + 'px';
+                        tooltip.style.top = screenY + 'px';
+                    }
+                } else {
+                    // Reset cursor when not over payload indicator
+                    if (canvas.style.cursor === 'pointer') {
+                        canvas.style.cursor = 'crosshair';
+                    }
+                    
+                    // Check for regular description tooltips
+                    const hoveredRect = rectangles.find(r => r.contains(x, y));
+                    if (hoveredRect && hoveredRect.description && hoveredRect.description.trim() !== '') {
+                        const tooltip = document.getElementById('tooltip');
+                        if (tooltip) {
+                            tooltip.textContent = hoveredRect.description;
+                            tooltip.style.display = 'block';
+                            tooltip.style.left = (screenX + 15) + 'px';
+                            tooltip.style.top = screenY + 'px';
+                        }
+                    } else {
+                        const hoveredConnection = connections.find(c => c.isNearConnection(x, y));
+                        if (hoveredConnection && hoveredConnection.description && hoveredConnection.description.trim() !== '') {
+                            const tooltip = document.getElementById('tooltip');
+                            if (tooltip) {
+                                tooltip.textContent = hoveredConnection.description;
+                                tooltip.style.display = 'block';
+                                tooltip.style.left = (screenX + 15) + 'px';
+                                tooltip.style.top = screenY + 'px';
+                            }
+                        } else {
+                            const tooltip = document.getElementById('tooltip');
+                            if (tooltip) {
+                                tooltip.style.display = 'none';
+                            }
+                        }
+                    }
+                }
+            }
+            
             // Check if we should start connection creation (user is dragging from potential start)
             if (potentialStartPoint && !isConnecting) {
                 // Calculate distance moved to determine if this is a drag vs click
@@ -2773,6 +3034,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         
         function updateTooltip(worldX, worldY, screenX, screenY) {
             const tooltip = document.getElementById('tooltip');
+            if (!tooltip) return;
             
             // Find rectangle under cursor first
             const hoveredRect = rectangles.find(r => r.contains(worldX, worldY));
@@ -3190,6 +3452,23 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         drawRectangleText(rectangle);
                     }
                 } // End of regular rectangle block
+                
+                // Draw payload indicator for all rectangles with non-trivial payload
+                if (rectangle.payload && rectangle.payload.trim() !== '') {
+                    const indicatorSize = 6 / zoom; // Size of the red dot
+                    const indicatorX = rectangle.x + indicatorSize + 2 / zoom; // Bottom left corner with small margin
+                    const indicatorY = rectangle.y + rectangle.height - indicatorSize - 2 / zoom;
+                    
+                    ctx.fillStyle = '#cc0000'; // Darker red color (50% luminance)
+                    ctx.beginPath();
+                    ctx.arc(indicatorX, indicatorY, indicatorSize, 0, 2 * Math.PI);
+                    ctx.fill();
+                    
+                    // Add a subtle white border for better visibility
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = 1 / zoom;
+                    ctx.stroke();
+                }
                 
                 // Draw connection points for selected rectangle
                 if (rectangle.selected) {
