@@ -6,6 +6,7 @@ A professional diagram creation extension for Visual Studio Code that allows you
 
 ### 🎨 **Drawing Tools**
 - **Draw Rectangles**: Click and drag to create rectangles
+- **Draw Frames**: ctrl+c;lick to draw frames around groups
 - **Connect Elements**: Create labeled connections between rectangles
 - **Move & Resize**: Drag rectangles to reposition, use handles to resize
 - **Smart Grid Snapping**: All elements snap to a 10px grid for perfect alignment
