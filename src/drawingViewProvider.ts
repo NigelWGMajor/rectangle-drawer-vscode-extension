@@ -631,8 +631,23 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 
                 return inMainArea;
             }
+
+            isHoveringNameBox(x, y) {
+                // For collection boxes, check if hovering over the name box
+                if (this.type === 'collection' && this.name) {
+                    const nameBoxWidth = Math.max(this.name.length * 8, 40);
+                    const nameBoxHeight = 20;
+                    const nameBoxX = this.x;
+                    const nameBoxY = this.y;
+
+                    return x >= nameBoxX && x <= nameBoxX + nameBoxWidth &&
+                           y >= nameBoxY && y <= nameBoxY + nameBoxHeight;
+                }
+                // For regular rectangles, any hover counts
+                return this.contains(x, y);
+            }
         }
-        
+
         class Connection {
             constructor(fromRect, fromPoint, toRect, toPoint, label = '', description = '', payload = '', color = '#4ecdc4', lineStyle = 'solid') {
                 this.fromRect = fromRect;
@@ -1219,25 +1234,36 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 canvas.style.cursor = 'crosshair';
 
                 // Check connections first (more specific than rectangle areas)
-                const hoveredConnection = connections.find(c => c.isNearConnection(x, y));
-                if (hoveredConnection && hoveredConnection.description && hoveredConnection.description.trim() !== '' && tooltip) {
-                    tooltip.textContent = hoveredConnection.description;
-                    tooltip.style.display = 'block';
-                    tooltip.style.left = (screenX + 15) + 'px';
-                    tooltip.style.top = screenY + 'px';
-                    // Reset payload tooltip styling
-                    tooltip.style.backgroundColor = '';
-                    tooltip.style.color = '';
-                    tooltip.style.fontFamily = '';
-                    tooltip.style.fontSize = '';
-                    tooltip.style.maxWidth = '';
-                    tooltip.style.whiteSpace = '';
-                    tooltip.style.border = '';
-                    tooltip.style.borderRadius = '';
-                    tooltip.style.padding = '';
-                    tooltip.style.lineHeight = '';
+                // Check both the connection line AND the label area
+                const hoveredConnection = connections.find(c => c.isNearConnection(x, y) || c.isLabelClicked(x, y));
+
+                // If we found a connection (even without description), don't check rectangles
+                if (hoveredConnection) {
+                    if (hoveredConnection.description && hoveredConnection.description.trim() !== '' && tooltip) {
+                        tooltip.textContent = hoveredConnection.description;
+                        tooltip.style.display = 'block';
+                        tooltip.style.left = (screenX + 15) + 'px';
+                        tooltip.style.top = screenY + 'px';
+                        // Reset payload tooltip styling
+                        tooltip.style.backgroundColor = '';
+                        tooltip.style.color = '';
+                        tooltip.style.fontFamily = '';
+                        tooltip.style.fontSize = '';
+                        tooltip.style.maxWidth = '';
+                        tooltip.style.whiteSpace = '';
+                        tooltip.style.border = '';
+                        tooltip.style.borderRadius = '';
+                        tooltip.style.padding = '';
+                        tooltip.style.lineHeight = '';
+                    } else if (tooltip) {
+                        // Connection found but no description - hide tooltip
+                        tooltip.style.display = 'none';
+                    }
+                    return; // Early return - connection found, stop processing
                 } else {
-                    const hoveredRect = rectangles.find(r => r.contains(x, y));
+                    // No connection found - check for rectangles
+                    // For rectangles, only show tooltip when hovering over name box (for collections/frames)
+                    const hoveredRect = rectangles.find(r => r.isHoveringNameBox(x, y));
                     if (hoveredRect && hoveredRect.description && hoveredRect.description.trim() !== '' && tooltip) {
                         tooltip.textContent = hoveredRect.description;
                         tooltip.style.display = 'block';
@@ -2445,7 +2471,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 const points = this.getConnectionPoints();
                 let nearest = null;
                 let minDistance = Infinity;
-                
+
                 for (const [key, point] of Object.entries(points)) {
                     const distance = Math.sqrt((x - point.x) ** 2 + (y - point.y) ** 2);
                     if (distance < minDistance && distance < 20) {
@@ -2453,8 +2479,23 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         nearest = { ...point, side: key };
                     }
                 }
-                
+
                 return nearest;
+            }
+
+            isHoveringNameBox(x, y) {
+                // For collection boxes, check if hovering over the name box
+                if (this.type === 'collection' && this.name) {
+                    const nameBoxWidth = Math.max(this.name.length * 8, 40);
+                    const nameBoxHeight = 20;
+                    const nameBoxX = this.x;
+                    const nameBoxY = this.y;
+
+                    return x >= nameBoxX && x <= nameBoxX + nameBoxWidth &&
+                           y >= nameBoxY && y <= nameBoxY + nameBoxHeight;
+                }
+                // For regular rectangles, any hover counts
+                return this.contains(x, y);
             }
         }
         
@@ -2577,15 +2618,29 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             
             isLabelClicked(x, y) {
                 if (!this.label || this.label.trim() === '') return false;
-                
+
                 const labelPos = this.getLabelPosition();
-                const labelWidth = 60; // Approximate label box width
-                const labelHeight = 20; // Approximate label box height
-                
-                return x >= labelPos.x - labelWidth/2 && 
+
+                // Calculate label dimensions accurately
+                // Need to match the dimensions used in drawConnectionLabel
+                const fontSize = Math.max(10 / zoom, 6);
+                ctx.font = fontSize + 'px Arial';
+                const textMetrics = ctx.measureText(this.label);
+                const textWidth = textMetrics.width;
+                const labelWidth = textWidth + 8 / zoom; // Padding
+                const labelHeight = fontSize + 4 / zoom; // Padding
+
+                const isInside = x >= labelPos.x - labelWidth/2 &&
                        x <= labelPos.x + labelWidth/2 &&
-                       y >= labelPos.y - labelHeight/2 && 
+                       y >= labelPos.y - labelHeight/2 &&
                        y <= labelPos.y + labelHeight/2;
+
+                // Debug logging
+                if (isInside) {
+                    console.log('Label clicked!', this.label, 'at', x, y);
+                }
+
+                return isInside;
             }
         }
 
@@ -3291,28 +3346,44 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     
                     // Check for regular description tooltips
                     // Check connections first (more specific than rectangle areas)
-                    const hoveredConnection = connections.find(c => c.isNearConnection(x, y));
-                    if (hoveredConnection && hoveredConnection.description && hoveredConnection.description.trim() !== '') {
-                        const tooltip = document.getElementById('tooltip');
-                        if (tooltip) {
-                            tooltip.textContent = hoveredConnection.description;
-                            tooltip.style.display = 'block';
-                            tooltip.style.left = (screenX + 15) + 'px';
-                            tooltip.style.top = screenY + 'px';
-                            // Reset payload tooltip styling
-                            tooltip.style.backgroundColor = '';
-                            tooltip.style.color = '';
-                            tooltip.style.fontFamily = '';
-                            tooltip.style.fontSize = '';
-                            tooltip.style.maxWidth = '';
-                            tooltip.style.whiteSpace = '';
-                            tooltip.style.border = '';
-                            tooltip.style.borderRadius = '';
-                            tooltip.style.padding = '';
-                            tooltip.style.lineHeight = '';
+                    // Check both the connection line AND the label area
+                    const hoveredConnection = connections.find(c => c.isNearConnection(x, y) || c.isLabelClicked(x, y));
+                    console.log('Hovered connection:', hoveredConnection ? hoveredConnection.label : 'none');
+
+                    // If we found a connection (even without description), don't check rectangles
+                    if (hoveredConnection) {
+                        if (hoveredConnection.description && hoveredConnection.description.trim() !== '') {
+                            const tooltip = document.getElementById('tooltip');
+                            if (tooltip) {
+                                tooltip.textContent = hoveredConnection.description;
+                                tooltip.style.display = 'block';
+                                tooltip.style.left = (screenX + 15) + 'px';
+                                tooltip.style.top = screenY + 'px';
+                                // Reset payload tooltip styling
+                                tooltip.style.backgroundColor = '';
+                                tooltip.style.color = '';
+                                tooltip.style.fontFamily = '';
+                                tooltip.style.fontSize = '';
+                                tooltip.style.maxWidth = '';
+                                tooltip.style.whiteSpace = '';
+                                tooltip.style.border = '';
+                                tooltip.style.borderRadius = '';
+                                tooltip.style.padding = '';
+                                tooltip.style.lineHeight = '';
+                            }
+                        } else {
+                            // Connection found but no description - hide tooltip
+                            const tooltip = document.getElementById('tooltip');
+                            if (tooltip) {
+                                tooltip.style.display = 'none';
+                            }
                         }
+                        return; // Early return - connection found, stop processing
                     } else {
-                        const hoveredRect = rectangles.find(r => r.contains(x, y));
+                        // No connection found - check for rectangles
+                        // For rectangles, only show tooltip when hovering over name box (for collections/frames)
+                        const hoveredRect = rectangles.find(r => r.isHoveringNameBox(x, y));
+                        console.log('Hovered rect:', hoveredRect ? hoveredRect.name : 'none');
                         if (hoveredRect && hoveredRect.description && hoveredRect.description.trim() !== '') {
                             const tooltip = document.getElementById('tooltip');
                             if (tooltip) {
