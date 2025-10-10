@@ -17,15 +17,15 @@ Expansion:
 
 Overall:
 
-- Allow Light/Dark theme for printing
-- Allow SVG export
++Allow Light/Dark theme for printing
++ Allow SVG export
 
 Boxes:
 
 - Allow different shapes (circle, rounded rectangle, diamond)
 - Allow different border styles (dashed, dotted, double)
 - Allow Storage boxes
-- Allow Grouping boxes
++ Allow Grouping boxes
 
 Modes:
 
@@ -35,8 +35,8 @@ Modes:
 Lines:
 
 - Allow line arrows (start, end, both)
-- Allow line styles (dashed, dotted, double)
++ Allow line styles (dashed, dotted, double)
 - Position left-right edge lines sequenced by color
   - When there is more than one line, they should be ordered by color index
-- Allow lines from nodes to top of box or text box of line
+- Allow lines from modes to top of box or text box of line
 - Allow lines from bottom to storage boxes

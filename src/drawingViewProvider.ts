@@ -508,6 +508,12 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
     }
 
     private _generateStandaloneHTML(data: any): string {
+        const backgroundColor = data.darkBackground ? '#1e1e1e' : '#ffffff';
+        const textColor = data.darkBackground ? '#ffffff' : '#000000';
+        const tooltipBg = data.darkBackground ? '#252526' : '#f8f8f8';
+        const tooltipBorder = data.darkBackground ? '#454545' : '#d1d1d1';
+        const tooltipText = data.darkBackground ? '#cccccc' : '#333333';
+        
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -519,8 +525,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             margin: 0;
             padding: 0;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background-color: #1e1e1e;
-            color: #ffffff;
+            background-color: ${backgroundColor};
+            color: ${textColor};
             overflow: hidden;
             width: 100vw;
             height: 100vh;
@@ -529,7 +535,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         #canvas {
             border: none;
             cursor: crosshair;
-            background-color: #1e1e1e;
+            background-color: ${backgroundColor};
             display: block;
             width: 100%;
             height: 100%;
@@ -537,11 +543,11 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         
         .tooltip {
             position: absolute;
-            background: #252526;
-            border: 1px solid #454545;
+            background: ${tooltipBg};
+            border: 1px solid ${tooltipBorder};
             border-radius: 3px;
             padding: 8px 12px;
-            color: #cccccc;
+            color: ${tooltipText};
             font-size: 12px;
             z-index: 1500;
             max-width: 300px;
@@ -575,6 +581,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         let panX = 0;
         let panY = 0;
         const gridSize = 10;
+        let darkBackground = ${data.darkBackground || false}; // Background mode for adaptive colors
         
         // Data
         let rectangles = [];
@@ -582,7 +589,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         
         // Classes
         class Rectangle {
-            constructor(x, y, width, height, name = '', description = '', payload = '', color = '#ffffff') {
+            constructor(x, y, width, height, name = '', description = '', payload = '', color = '#ffffff', type = 'regular') {
                 this.x = x;
                 this.y = y;
                 this.width = width;
@@ -593,11 +600,28 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 this.description = description;
                 this.payload = payload;
                 this.color = color;
+                this.type = type; // 'regular' or 'collection'
             }
             
             contains(x, y) {
-                return x >= this.x && x <= this.x + this.width &&
-                       y >= this.y && y <= this.y + this.height;
+                // Check main rectangle area
+                const inMainArea = x >= this.x && x <= this.x + this.width &&
+                                   y >= this.y && y <= this.y + this.height;
+                
+                // For collection boxes, also check name box area (positioned hard against upper left)
+                if (this.type === 'collection' && this.name) {
+                    const nameBoxWidth = Math.max(this.name.length * 8, 40);
+                    const nameBoxHeight = 20;
+                    const nameBoxX = this.x; // Hard against the collection box
+                    const nameBoxY = this.y; // Hard against the collection box
+                    
+                    const inNameBox = x >= nameBoxX && x <= nameBoxX + nameBoxWidth &&
+                                      y >= nameBoxY && y <= nameBoxY + nameBoxHeight;
+                    
+                    return inMainArea || inNameBox;
+                }
+                
+                return inMainArea;
             }
         }
         
@@ -828,61 +852,170 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 const hasLeftConnections = connections.some(c => c.toRect === rectangle);
                 const hasRightConnections = connections.some(c => c.fromRect === rectangle);
                 
-                // Convert hex color to rgba with low opacity for subtle background
-                let fillColor = 'rgba(255, 255, 255, 0.1)'; // Default white
-                if (rectangle.color && rectangle.color !== '#ffffff') {
-                    const hexColor = rectangle.color;
-                    const r = parseInt(hexColor.substr(1, 2), 16);
-                    const g = parseInt(hexColor.substr(3, 2), 16);
-                    const b = parseInt(hexColor.substr(5, 2), 16);
-                    fillColor = 'rgba(' + r + ', ' + g + ', ' + b + ', 0.15)'; // Subtle 15% opacity
-                }
-                
-                ctx.fillStyle = fillColor;
-                ctx.strokeStyle = '#ffffff';
-                
-                ctx.fillRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height);
-                
-                if (hasLeftConnections || hasRightConnections) {
-                    const normalWidth = 1 / zoom;
-                    const thickWidth = 5 / zoom;
+                // Handle collection boxes differently
+                if (rectangle.type === 'collection') {
+                    // Collection boxes: use rectangle color for border, no fill for container
+                    ctx.fillStyle = 'transparent';
                     
-                    // Left edge
-                    ctx.lineWidth = hasLeftConnections ? thickWidth : normalWidth;
+                    // Use rectangle color or default to adaptive color
+                    let borderColor = rectangle.color && rectangle.color !== '#ffffff' ? rectangle.color : (darkBackground ? '#cccccc' : '#333333');
+                    if (rectangle.selected) {
+                        borderColor = '#6496ff';
+                    }
+                    
+                    ctx.strokeStyle = borderColor;
+                    ctx.setLineDash([5, 5]); // Dotted line
+                    ctx.lineWidth = rectangle.selected ? 2 / zoom : 1 / zoom;
+                    
+                    // Draw collection box with all corners rounded
+                    const radius = 10; // Collection box corner radius
                     ctx.beginPath();
-                    ctx.moveTo(rectangle.x, rectangle.y);
-                    ctx.lineTo(rectangle.x, rectangle.y + rectangle.height);
+                    ctx.roundRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height, radius);
                     ctx.stroke();
                     
-                    // Right edge
-                    ctx.lineWidth = hasRightConnections ? thickWidth : normalWidth;
-                    ctx.beginPath();
-                    ctx.moveTo(rectangle.x + rectangle.width, rectangle.y);
-                    ctx.lineTo(rectangle.x + rectangle.width, rectangle.y + rectangle.height);
-                    ctx.stroke();
+                    ctx.setLineDash([]); // Reset to solid line for other elements
                     
-                    // Top and bottom edges
-                    ctx.lineWidth = normalWidth;
-                    ctx.beginPath();
-                    ctx.moveTo(rectangle.x, rectangle.y);
-                    ctx.lineTo(rectangle.x + rectangle.width, rectangle.y);
-                    ctx.stroke();
-                    
-                    ctx.beginPath();
-                    ctx.moveTo(rectangle.x, rectangle.y + rectangle.height);
-                    ctx.lineTo(rectangle.x + rectangle.width, rectangle.y + rectangle.height);
-                    ctx.stroke();
+                    // Draw name box hard against upper left corner for collection boxes (always show for collections)
+                    if (rectangle.name) {
+                        const nameBoxWidth = Math.max(rectangle.name.length * 8, 40);
+                        const nameBoxHeight = 20;
+                        const nameBoxX = rectangle.x; // Hard against the collection box
+                        const nameBoxY = rectangle.y; // Hard against the collection box
+                        const nameRadius = nameBoxHeight / 2; // Radius = half height
+                        
+                        // Use rectangle color for name box fill, or default background
+                        let nameBoxFillColor;
+                        if (rectangle.color && rectangle.color !== '#ffffff') {
+                            nameBoxFillColor = rectangle.color;
+                        } else {
+                            nameBoxFillColor = darkBackground ? 'rgba(60, 60, 60, 0.9)' : 'rgba(240, 240, 240, 0.9)';
+                        }
+                        
+                        // Draw custom rounded rectangle (top-left, bottom-right rounded only)
+                        ctx.fillStyle = nameBoxFillColor;
+                        ctx.strokeStyle = borderColor;
+                        ctx.lineWidth = 1 / zoom;
+                        
+                        // Custom path with selective rounded corners
+                        ctx.beginPath();
+                        // Start at top-left, move clockwise
+                        ctx.moveTo(nameBoxX + nameRadius, nameBoxY); // Top edge start (after top-left curve)
+                        ctx.lineTo(nameBoxX + nameBoxWidth, nameBoxY); // Top edge to top-right (no curve)
+                        ctx.lineTo(nameBoxX + nameBoxWidth, nameBoxY + nameBoxHeight - nameRadius); // Right edge to bottom-right curve
+                        ctx.arcTo(nameBoxX + nameBoxWidth, nameBoxY + nameBoxHeight, nameBoxX + nameBoxWidth - nameRadius, nameBoxY + nameBoxHeight, nameRadius); // Bottom-right curve
+                        ctx.lineTo(nameBoxX, nameBoxY + nameBoxHeight); // Bottom edge to bottom-left (no curve)
+                        ctx.lineTo(nameBoxX, nameBoxY + nameRadius); // Left edge to top-left curve
+                        ctx.arcTo(nameBoxX, nameBoxY, nameBoxX + nameRadius, nameBoxY, nameRadius); // Top-left curve
+                        ctx.closePath();
+                        
+                        ctx.fill();
+                        ctx.stroke();
+                        
+                        // Draw name text with contrasting color
+                        const textColor = getContrastColor(nameBoxFillColor);
+                        ctx.fillStyle = textColor;
+                        ctx.font = (12 / zoom) + 'px Arial';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(rectangle.name, nameBoxX + nameBoxWidth / 2, nameBoxY + nameBoxHeight / 2);
+                    }
                 } else {
-                    ctx.lineWidth = 1 / zoom;
-                    ctx.strokeRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height);
-                }
+                    // Regular rectangles: existing behavior
+                    // Convert hex color to rgba with low opacity for subtle background
+                    let fillColor = 'rgba(255, 255, 255, 0.1)'; // Default white
+                    if (rectangle.color && rectangle.color !== '#ffffff') {
+                        const hexColor = rectangle.color;
+                        const r = parseInt(hexColor.substr(1, 2), 16);
+                        const g = parseInt(hexColor.substr(3, 2), 16);
+                        const b = parseInt(hexColor.substr(5, 2), 16);
+                        fillColor = 'rgba(' + r + ', ' + g + ', ' + b + ', 0.15)'; // Subtle 15% opacity
+                    }
+                    
+                    if (rectangle.selected) {
+                        ctx.fillStyle = 'rgba(100, 150, 255, 0.3)';
+                        ctx.strokeStyle = '#6496ff';
+                    } else {
+                        ctx.fillStyle = fillColor;
+                        // Adaptive border color based on background
+                        ctx.strokeStyle = darkBackground ? '#cccccc' : '#333333';
+                    }
+                    
+                    // Fill the rectangle
+                    ctx.fillRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height);
                 
-                if (rectangle.name && rectangle.name.trim() !== '') {
-                    drawRectangleText(rectangle);
-                }
+                    // Draw rectangle outline with variable thickness (only for regular rectangles)
+                    if (hasLeftConnections || hasRightConnections) {
+                        // Draw each edge separately with appropriate thickness
+                        const normalWidth = rectangle.selected ? 2 / zoom : 1 / zoom;
+                        const thickWidth = 5 / zoom; // 25% thicker than connection dot radius (4 * 1.25 = 5)
+                        
+                        ctx.beginPath();
+                        
+                        // Left edge (incoming connections)
+                        ctx.lineWidth = hasLeftConnections ? thickWidth : normalWidth;
+                        ctx.beginPath();
+                        ctx.moveTo(rectangle.x, rectangle.y);
+                        ctx.lineTo(rectangle.x, rectangle.y + rectangle.height);
+                        ctx.stroke();
+                        
+                        // Right edge (outgoing connections)
+                        ctx.lineWidth = hasRightConnections ? thickWidth : normalWidth;
+                        ctx.beginPath();
+                        ctx.moveTo(rectangle.x + rectangle.width, rectangle.y);
+                        ctx.lineTo(rectangle.x + rectangle.width, rectangle.y + rectangle.height);
+                        ctx.stroke();
+                        
+                        // Top and bottom edges (normal thickness)
+                        ctx.lineWidth = normalWidth;
+                        ctx.beginPath();
+                        ctx.moveTo(rectangle.x, rectangle.y);
+                        ctx.lineTo(rectangle.x + rectangle.width, rectangle.y);
+                        ctx.stroke();
+                        
+                        ctx.beginPath();
+                        ctx.moveTo(rectangle.x, rectangle.y + rectangle.height);
+                        ctx.lineTo(rectangle.x + rectangle.width, rectangle.y + rectangle.height);
+                        ctx.stroke();
+                    } else {
+                        // No connections, draw normal outline
+                        ctx.lineWidth = rectangle.selected ? 2 / zoom : 1 / zoom;
+                        ctx.strokeRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height);
+                    }
+                    
+                    // Draw rectangle name if it exists (only for regular rectangles)
+                    if (rectangle.name && rectangle.name.trim() !== '') {
+                        drawRectangleText(rectangle);
+                    }
+                } // End of regular rectangle block
             });
             
             ctx.restore();
+        }
+        
+        function drawRectangleText(rectangle) {
+            if (!rectangle.name || rectangle.name.trim() === '') return;
+            
+            // Set text properties
+            const fontSize = Math.max(12 / zoom, 8); // Scale font size with zoom, minimum 8px
+            ctx.font = fontSize + 'px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle'; // Center vertically like HTML export
+            
+            // Calculate text position (center of rectangle)
+            const textX = rectangle.x + rectangle.width / 2;
+            const textY = rectangle.y + rectangle.height / 2; // Center vertically
+            
+            // Draw text with outline for better readability without background
+            const lineWidth = Math.max(2 / zoom, 1);
+            
+            // Draw text outline (stroke)
+            ctx.strokeStyle = darkBackground ? '#000000' : '#ffffff';
+            ctx.lineWidth = lineWidth;
+            ctx.strokeText(rectangle.name, textX, textY);
+            
+            // Draw the text (fill) - color matches background
+            ctx.fillStyle = darkBackground ? '#ffffff' : '#000000';
+            ctx.fillText(rectangle.name, textX, textY);
         }
         
         // Mouse handling for tooltips
@@ -916,7 +1049,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         
         // Load data and initialize
         rectangles = ${JSON.stringify(data.rectangles)}.map(r => {
-            const rect = new Rectangle(r.x, r.y, r.width, r.height, r.name, r.description, r.payload, r.color);
+            const rect = new Rectangle(r.x, r.y, r.width, r.height, r.name, r.description, r.payload, r.color, r.type);
             rect.id = r.id; // Preserve original ID
             return rect;
         });
@@ -1054,8 +1187,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         
         <style>
             .rectangle-main { stroke-width: 1; stroke: ${data.darkBackground ? '#cccccc' : '#333333'}; stroke-opacity: 0.8; filter: url(#dropShadow); }
-            .rectangle-left-thick { stroke-width: 5; stroke: #4ecdc4; stroke-opacity: 0.9; }
-            .rectangle-right-thick { stroke-width: 5; stroke: #4ecdc4; stroke-opacity: 0.9; }
+            .rectangle-left-thick { stroke-width: 5; stroke: ${data.darkBackground ? '#cccccc' : '#333333'}; stroke-opacity: 0.9; }
+            .rectangle-right-thick { stroke-width: 5; stroke: ${data.darkBackground ? '#cccccc' : '#333333'}; stroke-opacity: 0.9; }
             .connection { stroke-width: 2; fill: none; opacity: 0.9; filter: url(#dropShadow); }
             .connection-dashed { stroke-dasharray: 8,4; }
             .connection-dot { fill: url(#dotGradient); stroke: #ffffff; stroke-width: 1; stroke-opacity: 0.9; filter: url(#dropShadow); }
@@ -1107,25 +1240,92 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         const hasLeftConn = hasConnections(rect.id, 'left');
         const hasRightConn = hasConnections(rect.id, 'right');
         
-        return `
-            <g>
-                <!-- Main rectangle with adjusted color -->
-                <rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" 
-                      fill="${adjustedColor}" class="rectangle-main"/>
-                
-                <!-- Enhanced left border if has connections -->
-                ${hasLeftConn ? `<line x1="${rect.x}" y1="${rect.y}" x2="${rect.x}" y2="${rect.y + rect.height}" 
-                                      class="rectangle-left-thick"/>` : ''}
-                
-                <!-- Enhanced right border if has connections -->
-                ${hasRightConn ? `<line x1="${rect.x + rect.width}" y1="${rect.y}" x2="${rect.x + rect.width}" y2="${rect.y + rect.height}" 
-                                       class="rectangle-right-thick"/>` : ''}
-                
-                <!-- Text with contrast -->
-                ${rect.name ? `<text x="${rect.x + rect.width / 2}" y="${rect.y + rect.height / 2}" 
-                               class="text" font-size="12" font-weight="500" fill="${textColor}" 
-                               opacity="0.95">${rect.name}</text>` : ''}
-            </g>`;
+        if (rect.type === 'collection') {
+            // Collection box: all corners rounded dotted border, name box hard against upper left corner
+            const nameBoxWidth = Math.max(rect.name.length * 8, 40);
+            const nameBoxHeight = 20;
+            const nameBoxX = rect.x; // Hard against the collection box
+            const nameBoxY = rect.y; // Hard against the collection box
+            const nameRadius = nameBoxHeight / 2; // Radius = half height
+            const collectionRadius = 10; // Collection box corner radius
+            
+            // Use rectangle color or default to adaptive color (same logic as canvas)
+            const borderColor = rect.color && rect.color !== '#ffffff' ? rect.color : (data.darkBackground ? '#cccccc' : '#333333');
+            
+            // Use rectangle color for name box fill, or default background
+            let nameBoxFillColor;
+            if (rect.color && rect.color !== '#ffffff') {
+                nameBoxFillColor = rect.color;
+            } else {
+                nameBoxFillColor = data.darkBackground ? 'rgba(60, 60, 60, 0.9)' : 'rgba(240, 240, 240, 0.9)';
+            }
+            
+            // Calculate text color for contrast
+            let textColor = '#000000'; // Default black
+            if (rect.color && rect.color !== '#ffffff') {
+                // Simple check: if it's a "dark" hex color (sum of RGB < 384), use white text
+                const hex = rect.color.replace('#', '');
+                const r = parseInt(hex.substr(0, 2), 16);
+                const g = parseInt(hex.substr(2, 2), 16);
+                const b = parseInt(hex.substr(4, 2), 16);
+                if (r + g + b < 384) {
+                    textColor = '#ffffff';
+                }
+            } else if (nameBoxFillColor.includes('60, 60, 60')) {
+                textColor = '#ffffff'; // White for dark gray
+            }
+            
+            return `
+                <g>
+                    <!-- Collection box with all corners rounded dotted border -->
+                    <rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" 
+                          rx="${collectionRadius}" ry="${collectionRadius}"
+                          fill="none" stroke="${borderColor}" 
+                          stroke-width="1" stroke-dasharray="5,5" stroke-opacity="0.8"/>
+                    
+                    ${rect.name ? `
+                    <!-- Custom rounded name box hard against upper left corner -->
+                    <g>
+                        <!-- SVG path with selective rounded corners (top-left and bottom-right only) -->
+                        <path d="M ${nameBoxX + nameRadius} ${nameBoxY}
+                                 L ${nameBoxX + nameBoxWidth} ${nameBoxY}
+                                 L ${nameBoxX + nameBoxWidth} ${nameBoxY + nameBoxHeight - nameRadius}
+                                 Q ${nameBoxX + nameBoxWidth} ${nameBoxY + nameBoxHeight} ${nameBoxX + nameBoxWidth - nameRadius} ${nameBoxY + nameBoxHeight}
+                                 L ${nameBoxX} ${nameBoxY + nameBoxHeight}
+                                 L ${nameBoxX} ${nameBoxY + nameRadius}
+                                 Q ${nameBoxX} ${nameBoxY} ${nameBoxX + nameRadius} ${nameBoxY}
+                                 Z"
+                              fill="${nameBoxFillColor}" 
+                              stroke="${borderColor}" 
+                              stroke-width="1" stroke-opacity="0.8"/>
+                        <text x="${nameBoxX + nameBoxWidth / 2}" y="${nameBoxY + nameBoxHeight / 2}" 
+                              class="text" font-size="12" font-weight="500" 
+                              fill="${textColor}" 
+                              text-anchor="middle" dominant-baseline="middle">${rect.name}</text>
+                    </g>` : ''}
+                </g>`;
+        } else {
+            // Regular rectangle
+            return `
+                <g>
+                    <!-- Main rectangle with adjusted color -->
+                    <rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" 
+                          fill="${adjustedColor}" class="rectangle-main"/>
+                    
+                    <!-- Enhanced left border if has connections -->
+                    ${hasLeftConn ? `<line x1="${rect.x}" y1="${rect.y}" x2="${rect.x}" y2="${rect.y + rect.height}" 
+                                          class="rectangle-left-thick"/>` : ''}
+                    
+                    <!-- Enhanced right border if has connections -->
+                    ${hasRightConn ? `<line x1="${rect.x + rect.width}" y1="${rect.y}" x2="${rect.x + rect.width}" y2="${rect.y + rect.height}" 
+                                           class="rectangle-right-thick"/>` : ''}
+                    
+                    <!-- Text with contrast -->
+                    ${rect.name ? `<text x="${rect.x + rect.width / 2}" y="${rect.y + rect.height / 2}" 
+                                   class="text" font-size="12" font-weight="500" fill="${textColor}" 
+                                   opacity="0.95">${rect.name}</text>` : ''}
+                </g>`;
+        }
     }).join('')}
 </svg>`;
 
@@ -1560,6 +1760,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 <h4>How to Use:</h4>
                 <ul>
                     <li><strong>Draw Rectangle:</strong> Click and drag on the canvas</li>
+                    <li><strong>Draw Collection Box:</strong> Hold Ctrl and drag to create a dotted collection box</li>
                     <li><strong>Move Rectangle:</strong> Drag the rectangle to reposition</li>
                     <li><strong>Resize Rectangle:</strong> Drag the corner handles</li>
                     <li><strong>Connect Rectangles:</strong> Right-click and select "Start Connection", then right-click target and "End Connection"</li>
@@ -1738,6 +1939,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         let rectangles = [];
         let connections = [];
         let isDrawing = false;
+        let isDrawingCollection = false; // Flag for collection box drawing with Ctrl+drag
         let isConnecting = false;
         let isDragging = false;
         let isResizing = false;
@@ -1771,7 +1973,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         
         // Rectangle class
         class Rectangle {
-            constructor(x, y, width, height, name = '', description = '', payload = '', color = '#ffffff') {
+            constructor(x, y, width, height, name = '', description = '', payload = '', color = '#ffffff', type = 'regular') {
                 this.x = snapToGrid(x);
                 this.y = snapToGrid(y);
                 this.width = snapToGrid(Math.max(width, gridSize));
@@ -1782,11 +1984,28 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 this.description = description;
                 this.payload = payload;
                 this.color = color;
+                this.type = type; // 'regular' or 'collection'
             }
             
             contains(x, y) {
-                return x >= this.x && x <= this.x + this.width &&
-                       y >= this.y && y <= this.y + this.height;
+                // Check main rectangle area
+                const inMainArea = x >= this.x && x <= this.x + this.width &&
+                                   y >= this.y && y <= this.y + this.height;
+                
+                // For collection boxes, also check name box area (positioned hard against upper left)
+                if (this.type === 'collection' && this.name) {
+                    const nameBoxWidth = Math.max(this.name.length * 8, 40);
+                    const nameBoxHeight = 20;
+                    const nameBoxX = this.x; // Hard against the collection box
+                    const nameBoxY = this.y; // Hard against the collection box
+                    
+                    const inNameBox = x >= nameBoxX && x <= nameBoxX + nameBoxWidth &&
+                                      y >= nameBoxY && y <= nameBoxY + nameBoxHeight;
+                    
+                    return inMainArea || inNameBox;
+                }
+                
+                return inMainArea;
             }
             
             getResizeHandle(x, y) {
@@ -2404,6 +2623,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     selectedRect = null;
                 } else {
                     // Start drawing new rectangle with snapped start point
+                    // Check if Ctrl is held for collection box
+                    isDrawingCollection = e.ctrlKey;
                     isDrawing = true;
                     startPoint = { x: snapToGrid(x), y: snapToGrid(y) };
                     dragStartX = x;
@@ -2620,8 +2841,11 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             const y = (screenY - panY) / zoom;
             
             if (isDrawing && currentRect && currentRect.width >= gridSize && currentRect.height >= gridSize) {
-                // Prompt for rectangle name
-                const name = prompt('Enter a name for this rectangle:', '') || '';
+                // Different prompts for regular vs collection boxes
+                const name = isDrawingCollection 
+                    ? (prompt('Enter a name for this collection:', ' ') || ' ') // Default to space for collection
+                    : (prompt('Enter a name for this rectangle:', '') || '');
+                
                 const newRect = new Rectangle(
                     currentRect.x,
                     currentRect.y,
@@ -2630,7 +2854,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     name,
                     '', // Empty description initially
                     '',  // Empty payload initially
-                    '#ffffff' // Default white color
+                    '#ffffff', // Default white color
+                    isDrawingCollection ? 'collection' : 'regular' // Set type based on Ctrl+drag
                 );
                 rectangles.push(newRect);
                 notifyDataChanged();
@@ -2677,7 +2902,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         name,
                         '', // Empty description initially
                         '',  // Empty payload initially
-                        '#ffffff' // Default white color
+                        '#ffffff', // Default white color
+                        'regular' // Default to regular rectangle type
                     );
                     rectangles.push(newRect);
                     
@@ -2716,6 +2942,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             }
             
             isDrawing = false;
+            isDrawingCollection = false; // Reset collection flag
             isConnecting = false;
             isDragging = false;
             isResizing = false;
@@ -2738,7 +2965,9 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     id: r.id,
                     name: r.name || '',
                     description: r.description || '',
-                    payload: r.payload || ''
+                    payload: r.payload || '',
+                    color: r.color || '#ffffff',
+                    type: r.type || 'regular' // Include type for collection boxes
                 })),
                 connections: connections.map(c => ({
                     fromRectId: c.fromRect.id,
@@ -2826,71 +3055,141 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 const hasLeftConnections = connections.some(c => c.toRect === rectangle);
                 const hasRightConnections = connections.some(c => c.fromRect === rectangle);
                 
-                // Convert hex color to rgba with low opacity for subtle background
-                let fillColor = 'rgba(255, 255, 255, 0.1)'; // Default white
-                if (rectangle.color && rectangle.color !== '#ffffff') {
-                    const hexColor = rectangle.color;
-                    const r = parseInt(hexColor.substr(1, 2), 16);
-                    const g = parseInt(hexColor.substr(3, 2), 16);
-                    const b = parseInt(hexColor.substr(5, 2), 16);
-                    fillColor = 'rgba(' + r + ', ' + g + ', ' + b + ', 0.15)'; // Subtle 15% opacity
-                }
-                
-                if (rectangle.selected) {
-                    ctx.fillStyle = 'rgba(100, 150, 255, 0.3)';
-                    ctx.strokeStyle = '#6496ff';
-                } else {
-                    ctx.fillStyle = fillColor;
-                    // Adaptive border color based on background
-                    ctx.strokeStyle = darkBackground ? '#cccccc' : '#333333';
-                }
-                
-                // Fill the rectangle
-                ctx.fillRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height);
-                
-                // Draw rectangle outline with variable thickness
-                if (hasLeftConnections || hasRightConnections) {
-                    // Draw each edge separately with appropriate thickness
-                    const normalWidth = rectangle.selected ? 2 / zoom : 1 / zoom;
-                    const thickWidth = 5 / zoom; // 25% thicker than connection dot radius (4 * 1.25 = 5)
+                // Handle collection boxes differently
+                if (rectangle.type === 'collection') {
+                    // Collection boxes: use rectangle color for border, no fill for container
+                    ctx.fillStyle = 'transparent';
                     
-                    ctx.beginPath();
+                    // Use rectangle color or default to adaptive color
+                    let borderColor = rectangle.color && rectangle.color !== '#ffffff' ? rectangle.color : (darkBackground ? '#cccccc' : '#333333');
+                    if (rectangle.selected) {
+                        borderColor = '#6496ff';
+                    }
                     
-                    // Left edge (incoming connections)
-                    ctx.lineWidth = hasLeftConnections ? thickWidth : normalWidth;
-                    ctx.beginPath();
-                    ctx.moveTo(rectangle.x, rectangle.y);
-                    ctx.lineTo(rectangle.x, rectangle.y + rectangle.height);
-                    ctx.stroke();
-                    
-                    // Right edge (outgoing connections)
-                    ctx.lineWidth = hasRightConnections ? thickWidth : normalWidth;
-                    ctx.beginPath();
-                    ctx.moveTo(rectangle.x + rectangle.width, rectangle.y);
-                    ctx.lineTo(rectangle.x + rectangle.width, rectangle.y + rectangle.height);
-                    ctx.stroke();
-                    
-                    // Top and bottom edges (normal thickness)
-                    ctx.lineWidth = normalWidth;
-                    ctx.beginPath();
-                    ctx.moveTo(rectangle.x, rectangle.y);
-                    ctx.lineTo(rectangle.x + rectangle.width, rectangle.y);
-                    ctx.stroke();
-                    
-                    ctx.beginPath();
-                    ctx.moveTo(rectangle.x, rectangle.y + rectangle.height);
-                    ctx.lineTo(rectangle.x + rectangle.width, rectangle.y + rectangle.height);
-                    ctx.stroke();
-                } else {
-                    // No connections, draw normal outline
+                    ctx.strokeStyle = borderColor;
+                    ctx.setLineDash([5, 5]); // Dotted line
                     ctx.lineWidth = rectangle.selected ? 2 / zoom : 1 / zoom;
-                    ctx.strokeRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height);
-                }
+                    
+                    // Draw collection box with all corners rounded
+                    const radius = 10; // Collection box corner radius
+                    ctx.beginPath();
+                    ctx.roundRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height, radius);
+                    ctx.stroke();
+                    
+                    ctx.setLineDash([]); // Reset to solid line for other elements
+                    
+                    // Draw name box hard against upper left corner for collection boxes (always show for collections)
+                    if (rectangle.name) {
+                        const nameBoxWidth = Math.max(rectangle.name.length * 8, 40);
+                        const nameBoxHeight = 20;
+                        const nameBoxX = rectangle.x; // Hard against the collection box
+                        const nameBoxY = rectangle.y; // Hard against the collection box
+                        const nameRadius = nameBoxHeight / 2; // Radius = half height
+                        
+                        // Use rectangle color for name box fill, or default background
+                        let nameBoxFillColor;
+                        if (rectangle.color && rectangle.color !== '#ffffff') {
+                            nameBoxFillColor = rectangle.color;
+                        } else {
+                            nameBoxFillColor = darkBackground ? 'rgba(60, 60, 60, 0.9)' : 'rgba(240, 240, 240, 0.9)';
+                        }
+                        
+                        // Draw custom rounded rectangle (top-left, bottom-right rounded only)
+                        ctx.fillStyle = nameBoxFillColor;
+                        ctx.strokeStyle = borderColor;
+                        ctx.lineWidth = 1 / zoom;
+                        
+                        // Custom path with selective rounded corners
+                        ctx.beginPath();
+                        // Start at top-left, move clockwise
+                        ctx.moveTo(nameBoxX + nameRadius, nameBoxY); // Top edge start (after top-left curve)
+                        ctx.lineTo(nameBoxX + nameBoxWidth, nameBoxY); // Top edge to top-right (no curve)
+                        ctx.lineTo(nameBoxX + nameBoxWidth, nameBoxY + nameBoxHeight - nameRadius); // Right edge to bottom-right curve
+                        ctx.arcTo(nameBoxX + nameBoxWidth, nameBoxY + nameBoxHeight, nameBoxX + nameBoxWidth - nameRadius, nameBoxY + nameBoxHeight, nameRadius); // Bottom-right curve
+                        ctx.lineTo(nameBoxX, nameBoxY + nameBoxHeight); // Bottom edge to bottom-left (no curve)
+                        ctx.lineTo(nameBoxX, nameBoxY + nameRadius); // Left edge to top-left curve
+                        ctx.arcTo(nameBoxX, nameBoxY, nameBoxX + nameRadius, nameBoxY, nameRadius); // Top-left curve
+                        ctx.closePath();
+                        
+                        ctx.fill();
+                        ctx.stroke();
+                        
+                        // Draw name text with contrasting color
+                        const textColor = getContrastColor(nameBoxFillColor);
+                        ctx.fillStyle = textColor;
+                        ctx.font = (12 / zoom) + 'px Arial';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(rectangle.name, nameBoxX + nameBoxWidth / 2, nameBoxY + nameBoxHeight / 2);
+                    }
+                } else {
+                    // Regular rectangles: existing behavior
+                    // Convert hex color to rgba with low opacity for subtle background
+                    let fillColor = 'rgba(255, 255, 255, 0.1)'; // Default white
+                    if (rectangle.color && rectangle.color !== '#ffffff') {
+                        const hexColor = rectangle.color;
+                        const r = parseInt(hexColor.substr(1, 2), 16);
+                        const g = parseInt(hexColor.substr(3, 2), 16);
+                        const b = parseInt(hexColor.substr(5, 2), 16);
+                        fillColor = 'rgba(' + r + ', ' + g + ', ' + b + ', 0.15)'; // Subtle 15% opacity
+                    }
+                    
+                    if (rectangle.selected) {
+                        ctx.fillStyle = 'rgba(100, 150, 255, 0.3)';
+                        ctx.strokeStyle = '#6496ff';
+                    } else {
+                        ctx.fillStyle = fillColor;
+                        // Adaptive border color based on background
+                        ctx.strokeStyle = darkBackground ? '#cccccc' : '#333333';
+                    }
+                    
+                    // Fill the rectangle
+                    ctx.fillRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height);
                 
-                // Draw rectangle name if it exists
-                if (rectangle.name && rectangle.name.trim() !== '') {
-                    drawRectangleText(rectangle);
-                }
+                    // Draw rectangle outline with variable thickness (only for regular rectangles)
+                    if (hasLeftConnections || hasRightConnections) {
+                        // Draw each edge separately with appropriate thickness
+                        const normalWidth = rectangle.selected ? 2 / zoom : 1 / zoom;
+                        const thickWidth = 5 / zoom; // 25% thicker than connection dot radius (4 * 1.25 = 5)
+                        
+                        ctx.beginPath();
+                        
+                        // Left edge (incoming connections)
+                        ctx.lineWidth = hasLeftConnections ? thickWidth : normalWidth;
+                        ctx.beginPath();
+                        ctx.moveTo(rectangle.x, rectangle.y);
+                        ctx.lineTo(rectangle.x, rectangle.y + rectangle.height);
+                        ctx.stroke();
+                        
+                        // Right edge (outgoing connections)
+                        ctx.lineWidth = hasRightConnections ? thickWidth : normalWidth;
+                        ctx.beginPath();
+                        ctx.moveTo(rectangle.x + rectangle.width, rectangle.y);
+                        ctx.lineTo(rectangle.x + rectangle.width, rectangle.y + rectangle.height);
+                        ctx.stroke();
+                        
+                        // Top and bottom edges (normal thickness)
+                        ctx.lineWidth = normalWidth;
+                        ctx.beginPath();
+                        ctx.moveTo(rectangle.x, rectangle.y);
+                        ctx.lineTo(rectangle.x + rectangle.width, rectangle.y);
+                        ctx.stroke();
+                        
+                        ctx.beginPath();
+                        ctx.moveTo(rectangle.x, rectangle.y + rectangle.height);
+                        ctx.lineTo(rectangle.x + rectangle.width, rectangle.y + rectangle.height);
+                        ctx.stroke();
+                    } else {
+                        // No connections, draw normal outline
+                        ctx.lineWidth = rectangle.selected ? 2 / zoom : 1 / zoom;
+                        ctx.strokeRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height);
+                    }
+                    
+                    // Draw rectangle name if it exists (only for regular rectangles)
+                    if (rectangle.name && rectangle.name.trim() !== '') {
+                        drawRectangleText(rectangle);
+                    }
+                } // End of regular rectangle block
                 
                 // Draw connection points for selected rectangle
                 if (rectangle.selected) {
@@ -3252,7 +3551,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     name: r.name || '',
                     description: r.description || '',
                     payload: r.payload || '',
-                    color: r.color || '#ffffff'
+                    color: r.color || '#ffffff',
+                    type: r.type || 'regular' // Include type for collection boxes
                 })),
                 connections: connections.map(c => ({
                     fromRectId: c.fromRect.id,
@@ -3290,7 +3590,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     name: r.name || '',
                     description: r.description || '',
                     payload: r.payload || '',
-                    color: r.color || '#ffffff'
+                    color: r.color || '#ffffff',
+                    type: r.type || 'regular' // Include type for collection boxes
                 })),
                 connections: connections.map(c => ({
                     fromRectId: c.fromRect.id,
@@ -3302,7 +3603,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     color: c.color || '#4ecdc4',
                     lineStyle: c.lineStyle || 'solid',
                     labelPosition: c.labelPosition
-                }))
+                })),
+                darkBackground: darkBackground
             };
             
             vscode.postMessage({
@@ -3322,7 +3624,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     name: r.name || '',
                     description: r.description || '',
                     payload: r.payload || '',
-                    color: r.color || '#ffffff'
+                    color: r.color || '#ffffff',
+                    type: r.type || 'regular' // Include type for collection boxes
                 })),
                 connections: connections.map(c => ({
                     fromRectId: c.fromRect.id,
@@ -3363,7 +3666,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     name: r.name || '',
                     description: r.description || '',
                     payload: r.payload || '',
-                    color: r.color || '#ffffff'
+                    color: r.color || '#ffffff',
+                    type: r.type || 'regular' // Include type for collection boxes
                 })),
                 connections: connections.map(c => ({
                     fromRectId: c.fromRect.id,
@@ -3396,7 +3700,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     name: r.name || '',
                     description: r.description || '',
                     payload: r.payload || '',
-                    color: r.color || '#ffffff'
+                    color: r.color || '#ffffff',
+                    type: r.type || 'regular' // Include type for collection boxes
                 })),
                 connections: connections.map(c => ({
                     fromRectId: c.fromRect.id,
@@ -3513,7 +3818,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                             rectData.name || '', 
                             rectData.description || '', 
                             rectData.payload || '',
-                            rectData.color || '#ffffff'
+                            rectData.color || '#ffffff',
+                            rectData.type || 'regular' // Handle new type field
                         );
                         rect.id = rectData.id;
                         rectangles.push(rect);
