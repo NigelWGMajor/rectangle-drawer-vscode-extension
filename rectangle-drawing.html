@@ -853,9 +853,30 @@
                 const payload = payloadRect ? payloadRect.payload : payloadConnection.payload;
                 const processedPayload = substituteVariables(payload);
 
+                // Create a custom drag image showing only the red dot
+                const dragCanvas = document.createElement('canvas');
+                const dragCtx = dragCanvas.getContext('2d');
+                const dotSize = 24; // Size of the drag image
+                dragCanvas.width = dotSize;
+                dragCanvas.height = dotSize;
+
+                // Draw the red dot
+                dragCtx.fillStyle = '#cc0000';
+                dragCtx.beginPath();
+                dragCtx.arc(dotSize / 2, dotSize / 2, dotSize / 2 - 2, 0, 2 * Math.PI);
+                dragCtx.fill();
+
+                // Add white border
+                dragCtx.strokeStyle = '#ffffff';
+                dragCtx.lineWidth = 2;
+                dragCtx.beginPath();
+                dragCtx.arc(dotSize / 2, dotSize / 2, dotSize / 2 - 2, 0, 2 * Math.PI);
+                dragCtx.stroke();
+
                 // Set the drag data
                 e.dataTransfer.effectAllowed = 'copy';
                 e.dataTransfer.setData('text/plain', processedPayload);
+                e.dataTransfer.setDragImage(dragCanvas, dotSize / 2, dotSize / 2);
             } else {
                 // Prevent drag if not on payload indicator
                 e.preventDefault();
