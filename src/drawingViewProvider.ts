@@ -2181,9 +2181,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 <button class="help-close" onclick="hideHelp()">&times;</button>
             </div>
             <div>
-                
-                <h4>Pix</h4>
-                A simple diagramming tool with boxes and links. Either type can have a name, a Descriptin (which shows when hovering) and a payload which can be cut/pasted or dragged)
+                A simple diagramming tool with boxes and links. Either type can have a name, a Description (which shows when hovering) and a payload which can be cut/pasted or dragged)
+                <hr>
                 <table>
                     <tr>
                         <td><strong>Draw Box</strong></td>
@@ -2201,9 +2200,6 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         <td>Hint:</td>
                         <td>right-drag to empty space to link to new box</td>
                     </tr>
-                </table>
-                <hr>
-                <table>
                     <tr>
                         <td><strong>Edit Properties:</strong></td>
                         <td>Double-click</td>
@@ -2216,9 +2212,6 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         <td><strong>Resize Rectangle:</strong></td>
                         <td>Click, then drag handles</td>
                     </tr>
-                </table>
-                <hr>
-                <table>
                     <tr>
                         <td><strong>Pan View:</strong></td>
                         <td>Middle button</td>
@@ -2231,10 +2224,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         <td><strong>Delete:</strong></td>
                         <td>Context menu</td>
                     </tr>
-                </table>
-                <hr>
-                <table>
-                    <tr>
+                     <tr>
                         <td><strong>Copy/Paste:</strong></td>
                         <td>Select box, then Ctrl+C/Ctrl+V</td>
                     </tr>
@@ -2251,6 +2241,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         <td>Payloads can contain other payloads if you wrap the name e.g. %%name$$</td>
                     </tr>
                 </table>
+                <hr>
             </div>
         </div>
     </div>
