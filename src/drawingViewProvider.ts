@@ -2181,32 +2181,76 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 <button class="help-close" onclick="hideHelp()">&times;</button>
             </div>
             <div>
-                <h4>How to Use:</h4>
-                <ul>
-                    <li><strong>Draw Box</strong> Click and drag</li>
-                    <li><strong>Draw Collection Box:</strong> Hold Ctrl and drag</li>
-                    <li><strong>Draw link:</strong> Right-drag</li>
-                    <li>Hint: right-drag to empty space to link to new box</li>
-                </ul>
+                
+                <h4>Pix</h4>
+                A simple diagramming tool with boxes and links. Either type can have a name, a Descriptin (which shows when hovering) and a payload which can be cut/pasted or dragged)
+                <table>
+                    <tr>
+                        <td><strong>Draw Box</strong></td>
+                        <td>Click and drag</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Draw Collection Box:</strong></td>
+                        <td>Hold Ctrl and drag</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Draw link:</strong></td>
+                        <td>Right-drag</td>
+                    </tr>
+                    <tr>
+                        <td>Hint:</td>
+                        <td>right-drag to empty space to link to new box</td>
+                    </tr>
+                </table>
                 <hr>
-                <ul>
-                    <li><strong>Edit Properties:</strong> Double-click</li>
-                    <li><strong>Move Rectangle:</strong> Drag</li>
-                    <li><strong>Resize Rectangle:</strong> Click, then drag handles</li>
-                </ul>
+                <table>
+                    <tr>
+                        <td><strong>Edit Properties:</strong></td>
+                        <td>Double-click</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Move Rectangle:</strong></td>
+                        <td>Drag</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Resize Rectangle:</strong></td>
+                        <td>Click, then drag handles</td>
+                    </tr>
+                </table>
                 <hr>
-                <ul>
-                    <li><strong>Pan View:</strong> Middle button</li>
-                    <li><strong>Zoom:</strong> Mouse wheel</li>
-                    <li><strong>Delete:</strong> Context menu</li>
-                </ul>
+                <table>
+                    <tr>
+                        <td><strong>Pan View:</strong></td>
+                        <td>Middle button</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Zoom:</strong></td>
+                        <td>Mouse wheel</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Delete:</strong></td>
+                        <td>Context menu</td>
+                    </tr>
+                </table>
                 <hr>
-                <ul>
-                    <li><strong>Copy/Paste:</strong> Select box, then Ctrl+C/Ctrl+V</li>
-                    <li><strong>Copy:</strong> Double-click red dot</li>
-                    <li><strong>drag out text:</strong> drag red buttons</li>
-                    <li>Note: Payloads can contain other payloads if you wrap the name e.g. %%name$$ </li>
-                </ul>
+                <table>
+                    <tr>
+                        <td><strong>Copy/Paste:</strong></td>
+                        <td>Select box, then Ctrl+C/Ctrl+V</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Copy:</strong></td>
+                        <td>Double-click red dot</td>
+                    </tr>
+                    <tr>
+                        <td><strong>drag out text:</strong></td>
+                        <td>drag red buttons</td>
+                    </tr>
+                    <tr>
+                        <td>Note:</td>
+                        <td>Payloads can contain other payloads if you wrap the name e.g. %%name$$</td>
+                    </tr>
+                </table>
             </div>
         </div>
     </div>
