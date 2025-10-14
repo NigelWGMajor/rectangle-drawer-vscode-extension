@@ -600,9 +600,6 @@
             }
             
             if (payloadRect && tooltip) {
-                console.log('Showing payload tooltip:', payloadRect.payload.substring(0, 50) + '...');
-                console.log('Tooltip element:', tooltip);
-
                 // Position tooltip directly below the red dot
                 const indicatorSize = 6 / zoom;
                 const dotX = payloadRect.x + indicatorSize + 2 / zoom;
@@ -624,7 +621,6 @@
                 tooltip.style.borderRadius = '4px';
                 tooltip.style.padding = '8px';
                 tooltip.style.lineHeight = '1.3';
-                console.log('Tooltip positioned at:', dotScreenX, dotScreenY);
 
                 // Important: Return early to prevent rectangle tooltip logic from running
                 return;
@@ -705,7 +701,6 @@
             }
 
             if (!payloadRect && !payloadConnection) {
-                console.log('No payload, checking regular tooltips');
                 // Reset cursor when not hovering over payload
                 canvas.style.cursor = 'crosshair';
 
@@ -790,19 +785,16 @@
                 // First, try to find a rectangle with matching name
                 const matchingRect = rectangles.find(r => r.name === variableName);
                 if (matchingRect && matchingRect.payload) {
-                    console.log(`Substituting $$${variableName}$$ with rectangle payload:`, matchingRect.payload);
                     return matchingRect.payload;
                 }
 
                 // If no rectangle found, try to find a connection with matching label
                 const matchingConnection = connections.find(c => c.label === variableName);
                 if (matchingConnection && matchingConnection.payload) {
-                    console.log(`Substituting $$${variableName}$$ with connection payload:`, matchingConnection.payload);
                     return matchingConnection.payload;
                 }
 
                 // If no match found, leave the variable as-is
-                console.log(`No match found for $$${variableName}$$, leaving as-is`);
                 return match;
             });
         }
@@ -864,7 +856,6 @@
                 // Copy payload to clipboard using browser API
                 if (navigator.clipboard) {
                     navigator.clipboard.writeText(processedPayload).then(() => {
-                        console.log('Payload copied to clipboard (after substitution):', processedPayload);
                         // Show temporary notification
                         const notification = document.createElement('div');
                         notification.textContent = 'Payload copied to clipboard!';
@@ -885,7 +876,6 @@
                             document.body.removeChild(notification);
                         }, 2000);
                     }).catch(() => {
-                        console.log('Clipboard API not available, falling back to manual copy');
                         // Fallback for older browsers
                         const textArea = document.createElement('textarea');
                         textArea.value = processedPayload;
@@ -916,17 +906,13 @@
             rect.id = r.id; // Preserve original ID
             return rect;
         });
-        
-        console.log('Loaded rectangles:', rectangles);
-        
+
         // Load connections
         const connectionData = [{"fromRectId":"giogrll4k","toRectId":"kloyyjtrh","id":"je3i44li4","label":"AB","description":"A to B","payload":"a->B\n","color":"#8c4ccd","lineStyle":"solid","labelPosition":null},{"fromRectId":"kloyyjtrh","toRectId":"bkf1chd45","id":"1ea79jd1z","label":"BC","description":"b to c","payload":"B ----> C\n","color":"#4ecdc4","lineStyle":"dashed","labelPosition":null},{"fromRectId":"bkf1chd45","toRectId":"5lplcdkth","id":"a3j2gpx3e","label":"CD","description":"C to D","payload":"C --> D\n","color":"#4ecdc4","lineStyle":"solid","labelPosition":null},{"fromRectId":"giogrll4k","toRectId":"bkf1chd45","id":"nh1qjstv2","label":"Bypass","description":"A to B","payload":"","color":"#4ecdc4","lineStyle":"thick-dotted","labelPosition":null}];
-        console.log('Loading connections:', connectionData);
-        
+
         connectionData.forEach(conn => {
             const fromRect = rectangles.find(r => r.id === conn.fromRectId);
             const toRect = rectangles.find(r => r.id === conn.toRectId);
-            console.log('Connection:', conn, 'fromRect:', fromRect, 'toRect:', toRect);
             if (fromRect && toRect) {
                 const fromPoint = { x: fromRect.x + fromRect.width, y: fromRect.y + fromRect.height / 2 };
                 const toPoint = { x: toRect.x, y: toRect.y + toRect.height / 2 };
@@ -936,11 +922,8 @@
                     connection.labelPosition = conn.labelPosition;
                 }
                 connections.push(connection);
-                console.log('Added connection:', connection);
             }
         });
-        
-        console.log('Final connections array:', connections);
         
         // Initialize
         resizeCanvas();

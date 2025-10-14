@@ -1333,33 +1333,23 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
 
         // Function to substitute variables in payload
         function substituteVariables(payload) {
-            console.log('[Export View] substituteVariables called with payload:', payload);
-            console.log('[Export View] Available rectangles:', rectangles.map(r => r.name));
-            console.log('[Export View] Available connections:', connections.map(c => c.label));
-
             // Find all $$variable$$ patterns - use non-greedy match
-            // Need to double-escape the dollar signs in the template string
             const variablePattern = /\\$\\$(.+?)\\$\\$/g;
 
             return payload.replace(variablePattern, (match, variableName) => {
-                console.log('[Export View] Found variable pattern:', match, 'variableName:', variableName);
-
                 // First, try to find a rectangle with matching name
                 const matchingRect = rectangles.find(r => r.name === variableName);
                 if (matchingRect && matchingRect.payload) {
-                    console.log(\`[Export View] Substituting $$\${variableName}$$ with rectangle payload:\`, matchingRect.payload);
                     return matchingRect.payload;
                 }
 
                 // If no rectangle found, try to find a connection with matching label
                 const matchingConnection = connections.find(c => c.label === variableName);
                 if (matchingConnection && matchingConnection.payload) {
-                    console.log(\`[Export View] Substituting $$\${variableName}$$ with connection payload:\`, matchingConnection.payload);
                     return matchingConnection.payload;
                 }
 
                 // If no match found, leave the variable as-is
-                console.log(\`[Export View] No match found for $$\${variableName}$$, leaving as-is\`);
                 return match;
             });
         }
@@ -2919,39 +2909,23 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
 
         // Function to substitute variables in payload
         function substituteVariables(payload) {
-            console.log('[Interactive View] substituteVariables called with payload:', payload);
-            console.log('[Interactive View] Available rectangles:', rectangles.map(r => r.name));
-            console.log('[Interactive View] Available connections:', connections.map(c => c.label));
-
             // Find all $$variable$$ patterns - use non-greedy match
-            // Need to double-escape the dollar signs in the template string
             const variablePattern = /\\$\\$(.+?)\\$\\$/g;
-            console.log('[Interactive View] Regex pattern:', variablePattern);
-            console.log('[Interactive View] Regex source:', variablePattern.source);
-
-            // Test the regex
-            const testMatch = payload.match(variablePattern);
-            console.log('[Interactive View] Regex test match result:', testMatch);
 
             return payload.replace(variablePattern, (match, variableName) => {
-                console.log('[Interactive View] Found variable pattern:', match, 'variableName:', variableName);
-
                 // First, try to find a rectangle with matching name
                 const matchingRect = rectangles.find(r => r.name === variableName);
                 if (matchingRect && matchingRect.payload) {
-                    console.log(\`[Interactive View] Substituting $$\${variableName}$$ with rectangle payload:\`, matchingRect.payload);
                     return matchingRect.payload;
                 }
 
                 // If no rectangle found, try to find a connection with matching label
                 const matchingConnection = connections.find(c => c.label === variableName);
                 if (matchingConnection && matchingConnection.payload) {
-                    console.log(\`[Interactive View] Substituting $$\${variableName}$$ with connection payload:\`, matchingConnection.payload);
                     return matchingConnection.payload;
                 }
 
                 // If no match found, leave the variable as-is
-                console.log(\`[Interactive View] No match found for $$\${variableName}$$, leaving as-is\`);
                 return match;
             });
         }
@@ -2975,9 +2949,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     if (payload.trim() !== '') {
                         // Substitute variables before copying
                         const processedPayload = substituteVariables(payload);
-                        navigator.clipboard.writeText(processedPayload).then(() => {
-                            console.log('Payload copied to clipboard (after substitution):', processedPayload);
-                        }).catch(err => {
+                        navigator.clipboard.writeText(processedPayload).catch(err => {
                             console.error('Failed to copy to clipboard:', err);
                         });
                     }
@@ -3117,7 +3089,6 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         }
         
         function handleMouseDown(e) {
-            console.log('[handleMouseDown] Mouse down event triggered, button:', e.button);
             const rect = canvas.getBoundingClientRect();
             const screenX = e.clientX - rect.left;
             const screenY = e.clientY - rect.top;
@@ -3125,7 +3096,6 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             // Convert screen coordinates to world coordinates
             const x = (screenX - panX) / zoom;
             const y = (screenY - panY) / zoom;
-            console.log('[handleMouseDown] Click at world coords:', x, y);
 
             // Hide context menu if visible
             hideContextMenu();
@@ -3138,7 +3108,6 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 e.preventDefault();
                 return;
             } else if (e.button === 0) { // Left click
-                console.log('[handleMouseDown] Left click detected, checking for payload indicator...');
                 // Check if clicking on rectangle payload indicator first
                 const payloadRect = rectangles.find(r => {
                     if (!r.payload || r.payload.trim() === '') return false;
@@ -3180,15 +3149,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 });
 
                 if (payloadRect) {
-                    console.log('[handleMouseDown] Found payloadRect!', payloadRect);
-                    console.log('[handleMouseDown] Original payload:', payloadRect.payload);
-                    console.log('[handleMouseDown] About to call substituteVariables...');
-                    console.log('[handleMouseDown] typeof substituteVariables:', typeof substituteVariables);
-
                     // Substitute variables before copying
                     const processedPayload = substituteVariables(payloadRect.payload);
-
-                    console.log('[handleMouseDown] Processed payload:', processedPayload);
 
                     // Copy payload to clipboard
                     vscode.postMessage({
