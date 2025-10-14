@@ -18,6 +18,7 @@ Expansion:
 Overall:
 
 +Allow Light/Dark theme for printing
+
 + Allow SVG export
 
 Boxes:

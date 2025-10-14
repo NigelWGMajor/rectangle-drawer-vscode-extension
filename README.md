@@ -6,19 +6,20 @@ A professional diagram creation extension for Visual Studio Code that allows you
 
 ### 🎨 **Drawing Tools**
 - **Draw Rectangles**: Click and drag to create rectangles
-- **Draw Frames**: ctrl+c;lick to draw frames around groups
-- **Connect Elements**: Create labeled connections between rectangles
+- **Draw Frames**: Ctrl+click to draw frames around groups
+- **Connect Elements**: Right-drag to create labeled connections between rectangles
 - **Move & Resize**: Drag rectangles to reposition, use handles to resize
 - **Smart Grid Snapping**: All elements snap to a 10px grid for perfect alignment
+- Note: Right-dragging into empty space will link an new rectangle
 
 ### 🎯 **Interactive Elements**
 - **Editable Labels**: Double-click rectangles and connections to add/edit labels
-- **Color Customization**: Choose from 13 preset colors for rectangles and connections
-- **Line Styles**: Multiple line styles including solid, dashed, dotted, and thick variations
+- **Color Customization**: Choose from preset colors for rectangles and connections
+- **Line Styles**: Multiple line styles
 - **Property Dialogs**: Right-click elements to edit detailed properties
 
 ### 💾 **Data Management**
-- **Save/Load**: Persistent storage with JSON format
+- **Save/Load**: Persistent storage in JSON format
 - **Export HTML**: Export your diagrams as standalone HTML files
 - **Auto-sync**: Seamless data transfer between sidebar and panel views
 

@@ -781,6 +781,32 @@
             }
         }
         
+        // Function to substitute variables in payload
+        function substituteVariables(payload) {
+            // Find all $$variable$$ patterns - use non-greedy match
+            const variablePattern = /\$\$(.+?)\$\$/g;
+
+            return payload.replace(variablePattern, (match, variableName) => {
+                // First, try to find a rectangle with matching name
+                const matchingRect = rectangles.find(r => r.name === variableName);
+                if (matchingRect && matchingRect.payload) {
+                    console.log(`Substituting $$${variableName}$$ with rectangle payload:`, matchingRect.payload);
+                    return matchingRect.payload;
+                }
+
+                // If no rectangle found, try to find a connection with matching label
+                const matchingConnection = connections.find(c => c.label === variableName);
+                if (matchingConnection && matchingConnection.payload) {
+                    console.log(`Substituting $$${variableName}$$ with connection payload:`, matchingConnection.payload);
+                    return matchingConnection.payload;
+                }
+
+                // If no match found, leave the variable as-is
+                console.log(`No match found for $$${variableName}$$, leaving as-is`);
+                return match;
+            });
+        }
+
         // Click handling for payload indicators
         canvas.addEventListener('click', function(e) {
             const rect = canvas.getBoundingClientRect();
@@ -788,7 +814,7 @@
             const screenY = e.clientY - rect.top;
             const x = (screenX - panX) / zoom;
             const y = (screenY - panY) / zoom;
-            
+
             // Check if clicking on rectangle payload indicator
             const payloadRect = rectangles.find(r => {
                 if (!r.payload || r.payload.trim() === '') return false;
@@ -832,10 +858,13 @@
             const payloadToCopy = payloadRect ? payloadRect.payload : (payloadConnection ? payloadConnection.payload : null);
 
             if (payloadToCopy) {
+                // Substitute variables before copying
+                const processedPayload = substituteVariables(payloadToCopy);
+
                 // Copy payload to clipboard using browser API
                 if (navigator.clipboard) {
-                    navigator.clipboard.writeText(payloadToCopy).then(() => {
-                        console.log('Payload copied to clipboard');
+                    navigator.clipboard.writeText(processedPayload).then(() => {
+                        console.log('Payload copied to clipboard (after substitution):', processedPayload);
                         // Show temporary notification
                         const notification = document.createElement('div');
                         notification.textContent = 'Payload copied to clipboard!';
@@ -859,7 +888,7 @@
                         console.log('Clipboard API not available, falling back to manual copy');
                         // Fallback for older browsers
                         const textArea = document.createElement('textarea');
-                        textArea.value = payloadToCopy;
+                        textArea.value = processedPayload;
                         document.body.appendChild(textArea);
                         textArea.select();
                         document.execCommand('copy');
