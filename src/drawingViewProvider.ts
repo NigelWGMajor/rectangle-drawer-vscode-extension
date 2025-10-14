@@ -2720,6 +2720,65 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             return { x, y };
         }
 
+        function handleDragStart(e) {
+            const rect = canvas.getBoundingClientRect();
+            const screenX = e.clientX - rect.left;
+            const screenY = e.clientY - rect.top;
+            const x = (screenX - panX) / zoom;
+            const y = (screenY - panY) / zoom;
+
+            // Check if dragging from rectangle payload indicator
+            const payloadRect = rectangles.find(r => {
+                if (!r.payload || r.payload.trim() === '') return false;
+
+                const indicatorSize = 6 / zoom;
+                const indicatorX = r.x + indicatorSize + 2 / zoom;
+                const indicatorY = r.y + r.height - indicatorSize - 2 / zoom;
+
+                const distance = Math.sqrt((x - indicatorX) ** 2 + (y - indicatorY) ** 2);
+                return distance <= indicatorSize;
+            });
+
+            // Check if dragging from connection payload indicator
+            const payloadConnection = connections.find(conn => {
+                if (!conn.payload || conn.payload.trim() === '') return false;
+
+                const points = conn.getConnectionPoints();
+                let indicatorPos;
+
+                if (conn.labelPosition) {
+                    indicatorPos = conn.labelPosition;
+                } else {
+                    indicatorPos = getBezierPoint(points.from.x, points.from.y, points.to.x, points.to.y, 0.5);
+                }
+
+                let dotX = indicatorPos.x;
+                let dotY = indicatorPos.y;
+
+                if (conn.label && conn.label.trim() !== '') {
+                    ctx.font = (10 / zoom) + 'px Arial';
+                    const textWidth = ctx.measureText(conn.label).width + 8 / zoom;
+                    dotX = indicatorPos.x - textWidth/2 - 10 / zoom;
+                }
+
+                const indicatorSize = 6 / zoom;
+                const distance = Math.sqrt((x - dotX) ** 2 + (y - dotY) ** 2);
+                return distance <= indicatorSize;
+            });
+
+            if (payloadRect || payloadConnection) {
+                const payload = payloadRect ? payloadRect.payload : payloadConnection.payload;
+                const processedPayload = substituteVariables(payload);
+
+                // Set the drag data
+                e.dataTransfer.effectAllowed = 'copy';
+                e.dataTransfer.setData('text/plain', processedPayload);
+            } else {
+                // Prevent drag if not on payload indicator
+                e.preventDefault();
+            }
+        }
+
         // Event handlers
         canvas.addEventListener('mousedown', handleMouseDown);
         canvas.addEventListener('mousemove', handleMouseMove);
@@ -2727,6 +2786,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         canvas.addEventListener('contextmenu', handleContextMenu);
         canvas.addEventListener('wheel', handleWheel);
         canvas.addEventListener('dblclick', handleDoubleClick);
+        canvas.addEventListener('dragstart', handleDragStart);
         document.addEventListener('click', hideContextMenu);
         document.addEventListener('keydown', handleKeyDown);
         
@@ -3343,6 +3403,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         if (distance <= indicatorSize) {
                             payloadTooltipRect = rectangle;
                             canvas.style.cursor = 'pointer';
+                            canvas.draggable = true;
                             break;
                         }
                     }
@@ -3376,6 +3437,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         if (distance <= indicatorSize) {
                             payloadTooltipConnection = conn;
                             canvas.style.cursor = 'pointer';
+                            canvas.draggable = true;
                             break;
                         }
                     }
@@ -3457,10 +3519,11 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 }
 
                 if (!payloadTooltipRect && !payloadTooltipConnection) {
-                    // Reset cursor when not over payload indicator
+                    // Reset cursor and draggable when not over payload indicator
                     if (canvas.style.cursor === 'pointer') {
                         canvas.style.cursor = 'crosshair';
                     }
+                    canvas.draggable = false;
                     
                     // Check for regular description tooltips
                     // Check connections first (more specific than rectangle areas)
