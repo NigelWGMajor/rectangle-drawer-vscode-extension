@@ -883,8 +883,8 @@
             }
         });
 
-        // Click handling for payload indicators
-        canvas.addEventListener('click', function(e) {
+        // Double-click handling for payload indicators (clipboard copy)
+        canvas.addEventListener('dblclick', function(e) {
             const rect = canvas.getBoundingClientRect();
             const screenX = e.clientX - rect.left;
             const screenY = e.clientY - rect.top;

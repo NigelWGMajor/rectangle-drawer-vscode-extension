@@ -9,7 +9,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
     private static lastSaveLocation: vscode.Uri | undefined;
     private static lastLoadLocation: vscode.Uri | undefined;
 
-    constructor(private readonly _extensionUri: vscode.Uri) {}
+    constructor(private readonly _extensionUri: vscode.Uri) { }
 
     // Method to refresh sidebar with current data
     public static refreshSidebarWithData(data: any) {
@@ -21,7 +21,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 type: 'loadData',
                 data: data
             });
-            
+
             // Also update filename display if there's a current file
             if (DrawingViewProvider.currentFilePath) {
                 DrawingViewProvider.sidebarInstance.webview.postMessage({
@@ -65,7 +65,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
     ) {
         // Store reference to sidebar instance
         DrawingViewProvider.sidebarInstance = webviewView;
-        
+
         webviewView.webview.options = {
             enableScripts: true,
             localResourceRoots: [this._extensionUri],
@@ -79,9 +79,9 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             console.log('Sidebar resolving with data:', DrawingViewProvider.currentData);
             // Send data after webview is ready
             setTimeout(() => {
-                webviewView.webview.postMessage({ 
-                    type: 'loadData', 
-                    data: DrawingViewProvider.currentData 
+                webviewView.webview.postMessage({
+                    type: 'loadData',
+                    data: DrawingViewProvider.currentData
                 });
                 console.log('Sidebar loaded with data:', DrawingViewProvider.currentData);
             }, 500);
@@ -132,7 +132,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         DrawingViewProvider.currentFilePath = undefined;
                         DrawingViewProvider.updateSidebarTitle();
                         DrawingViewProvider.updatePanelTitle();
-                        
+
                         // Clear filename display in webviews
                         if (DrawingViewProvider.currentPanel) {
                             DrawingViewProvider.currentPanel.webview.postMessage({
@@ -162,12 +162,12 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             // Update with new data if provided
             if (initialData) {
                 DrawingViewProvider.currentData = initialData;
-                DrawingViewProvider.currentPanel.webview.postMessage({ 
-                    type: 'loadData', 
-                    data: initialData 
+                DrawingViewProvider.currentPanel.webview.postMessage({
+                    type: 'loadData',
+                    data: initialData
                 });
             }
-            
+
             // Update filename if available
             if (DrawingViewProvider.currentFilePath) {
                 DrawingViewProvider.currentPanel.webview.postMessage({
@@ -198,7 +198,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         const dataToLoad = initialData || DrawingViewProvider.currentData;
         setTimeout(() => {
             panel.webview.postMessage({ type: 'loadData', data: dataToLoad });
-            
+
             // Send filename if we have one
             if (DrawingViewProvider.currentFilePath) {
                 panel.webview.postMessage({
@@ -254,7 +254,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         DrawingViewProvider.currentFilePath = undefined;
                         DrawingViewProvider.updateSidebarTitle();
                         DrawingViewProvider.updatePanelTitle();
-                        
+
                         // Clear filename display in webviews
                         if (DrawingViewProvider.currentPanel) {
                             DrawingViewProvider.currentPanel.webview.postMessage({
@@ -279,7 +279,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         DrawingViewProvider.currentData = data;
         // Create or show panel with data
         DrawingViewProvider.createOrShow(this._extensionUri, data);
-        
+
         // Update filename in panel if there's a current file
         if (DrawingViewProvider.currentFilePath && DrawingViewProvider.currentPanel) {
             setTimeout(() => {
@@ -291,7 +291,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 }
             }, 200);
         }
-        
+
         // Close sidebar view by focusing on the panel
         vscode.commands.executeCommand('workbench.action.closeSidebar');
     }
@@ -300,7 +300,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         try {
             // Update shared data
             DrawingViewProvider.currentData = data;
-            
+
             // Determine default URI based on last save location
             let defaultUri: vscode.Uri;
             if (DrawingViewProvider.lastSaveLocation) {
@@ -314,7 +314,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             } else {
                 defaultUri = vscode.Uri.file('drawing.pix.json');
             }
-            
+
             // Show save dialog
             const saveUri = await vscode.window.showSaveDialog({
                 defaultUri: defaultUri,
@@ -328,7 +328,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             if (saveUri) {
                 // Remember this location for next time
                 DrawingViewProvider.lastSaveLocation = saveUri;
-                
+
                 // Create formatted JSON with metadata
                 const saveData = {
                     version: "1.0",
@@ -339,13 +339,13 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
 
                 const jsonContent = JSON.stringify(saveData, null, 2);
                 await vscode.workspace.fs.writeFile(saveUri, Buffer.from(jsonContent, 'utf8'));
-                
+
                 // Update last save location and titles
                 DrawingViewProvider.lastSaveLocation = saveUri;
                 DrawingViewProvider.currentFilePath = saveUri.fsPath;
                 DrawingViewProvider.updateSidebarTitle(saveUri.fsPath);
                 DrawingViewProvider.updatePanelTitle(saveUri.fsPath);
-                
+
                 // Update filename display in webviews
                 if (DrawingViewProvider.currentPanel) {
                     DrawingViewProvider.currentPanel.webview.postMessage({
@@ -359,7 +359,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         filePath: saveUri.fsPath
                     });
                 }
-                
+
                 vscode.window.showInformationMessage(`Drawing saved to ${saveUri.fsPath}`);
             }
         } catch (error) {
@@ -378,7 +378,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 // Use same directory as last save if no load location
                 defaultUri = vscode.Uri.joinPath(DrawingViewProvider.lastSaveLocation, '..');
             }
-            
+
             // Show open dialog
             const openUri = await vscode.window.showOpenDialog({
                 canSelectFiles: true,
@@ -395,11 +395,11 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             if (openUri && openUri[0]) {
                 // Remember this location for next time
                 DrawingViewProvider.lastLoadLocation = openUri[0];
-                
+
                 const fileContent = await vscode.workspace.fs.readFile(openUri[0]);
                 const jsonContent = Buffer.from(fileContent).toString('utf8');
                 const loadedData = JSON.parse(jsonContent);
-                
+
                 // Extract rectangles and connections, handling different formats
                 const data = {
                     rectangles: loadedData.rectangles || [],
@@ -408,16 +408,16 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
 
                 // Update shared data
                 DrawingViewProvider.currentData = data;
-                
+
                 // Update last load location and titles
                 DrawingViewProvider.lastLoadLocation = openUri[0];
                 DrawingViewProvider.currentFilePath = openUri[0].fsPath;
                 DrawingViewProvider.updateSidebarTitle(openUri[0].fsPath);
                 DrawingViewProvider.updatePanelTitle(openUri[0].fsPath);
-                
+
                 // Send to webview
                 webview.postMessage({ type: 'loadData', data: data });
-                
+
                 // Update filename display in webviews
                 if (DrawingViewProvider.currentPanel) {
                     DrawingViewProvider.currentPanel.webview.postMessage({
@@ -431,7 +431,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         filePath: openUri[0].fsPath
                     });
                 }
-                
+
                 vscode.window.showInformationMessage(`Drawing loaded from ${openUri[0].fsPath}`);
             }
         } catch (error) {
@@ -466,9 +466,9 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 // Generate standalone HTML content
                 const htmlContent = this._generateStandaloneHTML(data);
                 await vscode.workspace.fs.writeFile(saveUri, Buffer.from(htmlContent, 'utf8'));
-                
+
                 vscode.window.showInformationMessage(`Drawing exported to ${saveUri.fsPath}`);
-                
+
                 // Open in default browser
                 await vscode.env.openExternal(saveUri);
             }
@@ -504,9 +504,9 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 // Generate SVG content
                 const svgContent = this._generateSVG(data);
                 await vscode.workspace.fs.writeFile(saveUri, Buffer.from(svgContent, 'utf8'));
-                
+
                 vscode.window.showInformationMessage(`Drawing exported to ${saveUri.fsPath}`);
-                
+
                 // Open in default application
                 await vscode.env.openExternal(saveUri);
             }
@@ -521,7 +521,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         const tooltipBg = data.darkBackground ? '#252526' : '#f8f8f8';
         const tooltipBorder = data.darkBackground ? '#454545' : '#d1d1d1';
         const tooltipText = data.darkBackground ? '#cccccc' : '#333333';
-        
+
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1549,17 +1549,17 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             const r = parseInt(hex.substr(0, 2), 16);
             const g = parseInt(hex.substr(2, 2), 16);
             const b = parseInt(hex.substr(4, 2), 16);
-            
+
             // Get background RGB
             const bgR = darkBackground ? 30 : 255;  // #1e1e1e vs #ffffff
             const bgG = darkBackground ? 30 : 255;
             const bgB = darkBackground ? 30 : 255;
-            
+
             // Simulate alpha blending: result = alpha * foreground + (1 - alpha) * background
             const finalR = Math.round(alpha * r + (1 - alpha) * bgR);
             const finalG = Math.round(alpha * g + (1 - alpha) * bgG);
             const finalB = Math.round(alpha * b + (1 - alpha) * bgB);
-            
+
             return `#${finalR.toString(16).padStart(2, '0')}${finalG.toString(16).padStart(2, '0')}${finalB.toString(16).padStart(2, '0')}`;
         };
 
@@ -1609,83 +1609,83 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
     
     <!-- Connections with enhanced styling -->
     ${data.connections.map((conn: any) => {
-        const fromRect = data.rectangles.find((r: any) => r.id === conn.fromRectId);
-        const toRect = data.rectangles.find((r: any) => r.id === conn.toRectId);
-        if (!fromRect || !toRect) return '';
-        
-        const points = getConnectionPoints(fromRect, toRect);
-        const pathData = createBezierPath(points.from.x, points.from.y, points.to.x, points.to.y);
-        const dashClass = conn.lineStyle === 'dashed' ? 'connection-dashed' : '';
-        
-        let labelElement = '';
-        if (conn.label) {
-            // Calculate label position (midpoint of curve)
-            const midX = (points.from.x + points.to.x) / 2;
-            const midY = (points.from.y + points.to.y) / 2;
-            const textWidth = conn.label.length * 6 + 8; // Approximate text width
-            const adjustedLabelColor = adjustColorForBackground(conn.color, 0.95);
-            
-            labelElement = `
+            const fromRect = data.rectangles.find((r: any) => r.id === conn.fromRectId);
+            const toRect = data.rectangles.find((r: any) => r.id === conn.toRectId);
+            if (!fromRect || !toRect) return '';
+
+            const points = getConnectionPoints(fromRect, toRect);
+            const pathData = createBezierPath(points.from.x, points.from.y, points.to.x, points.to.y);
+            const dashClass = conn.lineStyle === 'dashed' ? 'connection-dashed' : '';
+
+            let labelElement = '';
+            if (conn.label) {
+                // Calculate label position (midpoint of curve)
+                const midX = (points.from.x + points.to.x) / 2;
+                const midY = (points.from.y + points.to.y) / 2;
+                const textWidth = conn.label.length * 6 + 8; // Approximate text width
+                const adjustedLabelColor = adjustColorForBackground(conn.color, 0.95);
+
+                labelElement = `
                 <g>
-                    <rect x="${midX - textWidth/2}" y="${midY - 8}" width="${textWidth}" height="16" 
+                    <rect x="${midX - textWidth / 2}" y="${midY - 8}" width="${textWidth}" height="16" 
                           rx="8" class="label-bg" fill="${adjustedLabelColor}"/>
                     <text x="${midX}" y="${midY}" class="text" font-size="10" 
                           fill="${getContrastColor(conn.color)}" font-weight="500">${conn.label}</text>
                 </g>`;
-        }
-        
-        return `
+            }
+
+            return `
             <path d="${pathData}" class="connection ${dashClass}" stroke="${conn.color}"/>
             <circle cx="${points.from.x}" cy="${points.from.y}" r="4" class="connection-dot"/>
             <circle cx="${points.to.x}" cy="${points.to.y}" r="4" class="connection-dot"/>
             ${labelElement}`;
-    }).join('')}
+        }).join('')}
     
     <!-- Rectangles with background-adjusted colors -->
     ${data.rectangles.map((rect: any) => {
-        // Match canvas alpha values: white=0.1, colored=0.15
-        const alpha = rect.color === '#ffffff' ? 0.1 : 0.15;
-        const adjustedColor = adjustColorForBackground(rect.color, alpha);
-        const textColor = getContrastColor(rect.color);
-        const hasLeftConn = hasConnections(rect.id, 'left');
-        const hasRightConn = hasConnections(rect.id, 'right');
-        
-        if (rect.type === 'collection') {
-            // Collection box: all corners rounded dotted border, name box hard against upper left corner
-            const nameBoxWidth = Math.max(rect.name.length * 8, 40);
-            const nameBoxHeight = 20;
-            const nameBoxX = rect.x; // Hard against the collection box
-            const nameBoxY = rect.y; // Hard against the collection box
-            const nameRadius = nameBoxHeight / 2; // Radius = half height
-            const collectionRadius = 10; // Collection box corner radius
-            
-            // Use rectangle color or default to adaptive color (same logic as canvas)
-            const borderColor = rect.color && rect.color !== '#ffffff' ? rect.color : (data.darkBackground ? '#cccccc' : '#333333');
-            
-            // Use rectangle color for name box fill, or default background
-            let nameBoxFillColor;
-            if (rect.color && rect.color !== '#ffffff') {
-                nameBoxFillColor = rect.color;
-            } else {
-                nameBoxFillColor = data.darkBackground ? 'rgba(60, 60, 60, 0.9)' : 'rgba(240, 240, 240, 0.9)';
-            }
-            
-            // Calculate text color for contrast
-            let textColor = '#000000'; // Default black
-            if (rect.color && rect.color !== '#ffffff') {
-                // Simple check: if it's a "dark" hex color (sum of RGB < 384), use white text
-                const hex = rect.color.replace('#', '');
-                const r = parseInt(hex.substr(0, 2), 16);
-                const g = parseInt(hex.substr(2, 2), 16);
-                const b = parseInt(hex.substr(4, 2), 16);
-                if (r + g + b < 384) {
-                    textColor = '#ffffff';
+            // Match canvas alpha values: white=0.1, colored=0.15
+            const alpha = rect.color === '#ffffff' ? 0.1 : 0.15;
+            const adjustedColor = adjustColorForBackground(rect.color, alpha);
+            const textColor = getContrastColor(rect.color);
+            const hasLeftConn = hasConnections(rect.id, 'left');
+            const hasRightConn = hasConnections(rect.id, 'right');
+
+            if (rect.type === 'collection') {
+                // Collection box: all corners rounded dotted border, name box hard against upper left corner
+                const nameBoxWidth = Math.max(rect.name.length * 8, 40);
+                const nameBoxHeight = 20;
+                const nameBoxX = rect.x; // Hard against the collection box
+                const nameBoxY = rect.y; // Hard against the collection box
+                const nameRadius = nameBoxHeight / 2; // Radius = half height
+                const collectionRadius = 10; // Collection box corner radius
+
+                // Use rectangle color or default to adaptive color (same logic as canvas)
+                const borderColor = rect.color && rect.color !== '#ffffff' ? rect.color : (data.darkBackground ? '#cccccc' : '#333333');
+
+                // Use rectangle color for name box fill, or default background
+                let nameBoxFillColor;
+                if (rect.color && rect.color !== '#ffffff') {
+                    nameBoxFillColor = rect.color;
+                } else {
+                    nameBoxFillColor = data.darkBackground ? 'rgba(60, 60, 60, 0.9)' : 'rgba(240, 240, 240, 0.9)';
                 }
-            } else if (nameBoxFillColor.includes('60, 60, 60')) {
-                textColor = '#ffffff'; // White for dark gray
-            }
-            
-            return `
+
+                // Calculate text color for contrast
+                let textColor = '#000000'; // Default black
+                if (rect.color && rect.color !== '#ffffff') {
+                    // Simple check: if it's a "dark" hex color (sum of RGB < 384), use white text
+                    const hex = rect.color.replace('#', '');
+                    const r = parseInt(hex.substr(0, 2), 16);
+                    const g = parseInt(hex.substr(2, 2), 16);
+                    const b = parseInt(hex.substr(4, 2), 16);
+                    if (r + g + b < 384) {
+                        textColor = '#ffffff';
+                    }
+                } else if (nameBoxFillColor.includes('60, 60, 60')) {
+                    textColor = '#ffffff'; // White for dark gray
+                }
+
+                return `
                 <g>
                     <!-- Collection box with all corners rounded dotted border -->
                     <rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" 
@@ -1721,9 +1721,9 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         <title>${rect.payload}</title>
                     </circle>` : ''}
                 </g>`;
-        } else {
-            // Regular rectangle
-            return `
+            } else {
+                // Regular rectangle
+                return `
                 <g>
                     <!-- Main rectangle with adjusted color -->
                     <rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" 
@@ -1749,8 +1749,8 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                         <title>${rect.payload}</title>
                     </circle>` : ''}
                 </g>`;
-        }
-    }).join('')}
+            }
+        }).join('')}
 </svg>`;
 
         return svgContent;
@@ -2144,10 +2144,10 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             <i class="fas fa-home"></i>
             <span class="tooltip-text">Reset View</span>
         </button>
-        ${context === 'sidebar' ? 
-            '<button onclick="openInPanel()" title="Open in Panel"><i class="fas fa-window-maximize"></i><span class="tooltip-text">Open in Panel</span></button>' : 
-            '<button onclick="openInSidebar()" title="Show in Sidebar"><i class="fas fa-columns"></i><span class="tooltip-text">Show in Sidebar</span></button>'
-        }
+        ${context === 'sidebar' ?
+                '<button onclick="openInPanel()" title="Open in Panel"><i class="fas fa-window-maximize"></i><span class="tooltip-text">Open in Panel</span></button>' :
+                '<button onclick="openInSidebar()" title="Show in Sidebar"><i class="fas fa-columns"></i><span class="tooltip-text">Show in Sidebar</span></button>'
+            }
         <button onclick="exportToHTML()" title="Export HTML">
             <i class="fas fa-file-export"></i>
             <span class="tooltip-text">Export HTML</span>
@@ -2183,14 +2183,29 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             <div>
                 <h4>How to Use:</h4>
                 <ul>
-                    <li><strong>Draw Rectangle:</strong> Click and drag on the canvas</li>
-                    <li><strong>Draw Collection Box:</strong> Hold Ctrl and drag to create a dotted collection box</li>
-                    <li><strong>Move Rectangle:</strong> Drag the rectangle to reposition</li>
-                    <li><strong>Resize Rectangle:</strong> Drag the corner handles</li>
-                    <li><strong>Connect Rectangles:</strong> Right-click and select "Start Connection", then right-click target and "End Connection"</li>
-                    <li><strong>Edit Properties:</strong> Right-click on rectangle or connection for options</li>
-                    <li><strong>Pan View:</strong> Hold Shift and drag to pan around</li>
-                    <li><strong>Zoom:</strong> Use mouse wheel to zoom in/out</li>
+                    <li><strong>Draw Box</strong> Click and drag</li>
+                    <li><strong>Draw Collection Box:</strong> Hold Ctrl and drag</li>
+                    <li><strong>Draw link:</strong> Right-drag</li>
+                    <li>Hint: right-drag to empty space to link to new box</li>
+                </ul>
+                <hr>
+                <ul>
+                    <li><strong>Edit Properties:</strong> Double-click</li>
+                    <li><strong>Move Rectangle:</strong> Drag</li>
+                    <li><strong>Resize Rectangle:</strong> Click, then drag handles</li>
+                </ul>
+                <hr>
+                <ul>
+                    <li><strong>Pan View:</strong> Middle button</li>
+                    <li><strong>Zoom:</strong> Mouse wheel</li>
+                    <li><strong>Delete:</strong> Context menu</li>
+                </ul>
+                <hr>
+                <ul>
+                    <li><strong>Copy/Paste:</strong> Select box, then Ctrl+C/Ctrl+V</li>
+                    <li><strong>Copy:</strong> Double-click red dot</li>
+                    <li><strong>drag out text:</strong> drag red buttons</li>
+                    <li>Note: Payloads can contain other payloads if you wrap the name e.g. %%name$$ </li>
                 </ul>
             </div>
         </div>
@@ -2770,9 +2785,30 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 const payload = payloadRect ? payloadRect.payload : payloadConnection.payload;
                 const processedPayload = substituteVariables(payload);
 
+                // Create a custom drag image showing only the red dot
+                const dragCanvas = document.createElement('canvas');
+                const dragCtx = dragCanvas.getContext('2d');
+                const dotSize = 24; // Size of the drag image
+                dragCanvas.width = dotSize;
+                dragCanvas.height = dotSize;
+
+                // Draw the red dot
+                dragCtx.fillStyle = '#cc0000';
+                dragCtx.beginPath();
+                dragCtx.arc(dotSize / 2, dotSize / 2, dotSize / 2 - 2, 0, 2 * Math.PI);
+                dragCtx.fill();
+
+                // Add white border
+                dragCtx.strokeStyle = '#ffffff';
+                dragCtx.lineWidth = 2;
+                dragCtx.beginPath();
+                dragCtx.arc(dotSize / 2, dotSize / 2, dotSize / 2 - 2, 0, 2 * Math.PI);
+                dragCtx.stroke();
+
                 // Set the drag data
                 e.dataTransfer.effectAllowed = 'copy';
                 e.dataTransfer.setData('text/plain', processedPayload);
+                e.dataTransfer.setDragImage(dragCanvas, dotSize / 2, dotSize / 2);
             } else {
                 // Prevent drag if not on payload indicator
                 e.preventDefault();
@@ -2939,10 +2975,79 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                 return distance <= indicatorSize;
             });
 
-            // If clicking on a red dot, don't open property editor (clipboard copy already happened)
-            if (payloadRect || payloadConnection) {
-                console.log('Double-click on red dot - ignoring for property editor');
-                return;
+            // If double-clicking on a red dot, copy to clipboard
+            if (payloadRect) {
+                console.log('Double-click on red dot - copying to clipboard');
+                // Substitute variables before copying
+                const processedPayload = substituteVariables(payloadRect.payload);
+
+                // Copy payload to clipboard
+                vscode.postMessage({
+                    type: 'copyToClipboard',
+                    text: processedPayload
+                });
+
+                // Visual feedback - briefly highlight the indicator
+                const originalFillStyle = ctx.fillStyle;
+                ctx.fillStyle = '#ffaaaa';
+                const indicatorSize = 6 / zoom;
+                const indicatorX = payloadRect.x + indicatorSize + 2 / zoom;
+                const indicatorY = payloadRect.y + payloadRect.height - indicatorSize - 2 / zoom;
+                ctx.beginPath();
+                ctx.arc(indicatorX, indicatorY, indicatorSize, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.fillStyle = originalFillStyle;
+
+                setTimeout(() => {
+                    draw(); // Redraw to remove highlight
+                }, 150);
+
+                return; // Don't open property editor
+            }
+
+            if (payloadConnection) {
+                console.log('Double-click on red dot - copying to clipboard');
+                // Substitute variables before copying
+                const processedPayload = substituteVariables(payloadConnection.payload);
+
+                // Copy payload to clipboard
+                vscode.postMessage({
+                    type: 'copyToClipboard',
+                    text: processedPayload
+                });
+
+                // Visual feedback - briefly highlight the indicator
+                const points = payloadConnection.getConnectionPoints();
+                let indicatorPos;
+
+                if (payloadConnection.labelPosition) {
+                    indicatorPos = payloadConnection.labelPosition;
+                } else {
+                    indicatorPos = getBezierPoint(points.from.x, points.from.y, points.to.x, points.to.y, 0.5);
+                }
+
+                let dotX = indicatorPos.x;
+                let dotY = indicatorPos.y;
+
+                if (payloadConnection.label && payloadConnection.label.trim() !== '') {
+                    ctx.font = (10 / zoom) + 'px Arial';
+                    const textWidth = ctx.measureText(payloadConnection.label).width + 8 / zoom;
+                    dotX = indicatorPos.x - textWidth/2 - 10 / zoom;
+                }
+
+                const originalFillStyle = ctx.fillStyle;
+                ctx.fillStyle = '#ffaaaa';
+                const indicatorSize = 6 / zoom;
+                ctx.beginPath();
+                ctx.arc(dotX, dotY, indicatorSize, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.fillStyle = originalFillStyle;
+
+                setTimeout(() => {
+                    draw(); // Redraw to remove highlight
+                }, 150);
+
+                return; // Don't open property editor
             }
 
             // Check for connections first (more specific than rectangle areas)
@@ -3208,75 +3313,9 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
                     return distance <= indicatorSize;
                 });
 
-                if (payloadRect) {
-                    // Substitute variables before copying
-                    const processedPayload = substituteVariables(payloadRect.payload);
-
-                    // Copy payload to clipboard
-                    vscode.postMessage({
-                        type: 'copyToClipboard',
-                        text: processedPayload
-                    });
-
-                    // Visual feedback - briefly highlight the indicator
-                    const originalFillStyle = ctx.fillStyle;
-                    ctx.fillStyle = '#ffaaaa';
-                    const indicatorSize = 6 / zoom;
-                    const indicatorX = payloadRect.x + indicatorSize + 2 / zoom;
-                    const indicatorY = payloadRect.y + payloadRect.height - indicatorSize - 2 / zoom;
-                    ctx.beginPath();
-                    ctx.arc(indicatorX, indicatorY, indicatorSize, 0, 2 * Math.PI);
-                    ctx.fill();
-                    ctx.fillStyle = originalFillStyle;
-
-                    setTimeout(() => {
-                        draw(); // Redraw to remove highlight
-                    }, 150);
-
-                    return; // Don't process other click logic
-                }
-
-                if (payloadConnection) {
-                    // Substitute variables before copying
-                    const processedPayload = substituteVariables(payloadConnection.payload);
-
-                    // Copy payload to clipboard
-                    vscode.postMessage({
-                        type: 'copyToClipboard',
-                        text: processedPayload
-                    });
-
-                    // Visual feedback - briefly highlight the indicator
-                    const points = payloadConnection.getConnectionPoints();
-                    let indicatorPos;
-
-                    if (payloadConnection.labelPosition) {
-                        indicatorPos = payloadConnection.labelPosition;
-                    } else {
-                        indicatorPos = getBezierPoint(points.from.x, points.from.y, points.to.x, points.to.y, 0.5);
-                    }
-
-                    let dotX = indicatorPos.x;
-                    let dotY = indicatorPos.y;
-
-                    if (payloadConnection.label && payloadConnection.label.trim() !== '') {
-                        ctx.font = (10 / zoom) + 'px Arial';
-                        const textWidth = ctx.measureText(payloadConnection.label).width + 8 / zoom;
-                        dotX = indicatorPos.x - textWidth/2 - 10 / zoom;
-                    }
-
-                    const originalFillStyle = ctx.fillStyle;
-                    ctx.fillStyle = '#ffaaaa';
-                    const indicatorSize = 6 / zoom;
-                    ctx.beginPath();
-                    ctx.arc(dotX, dotY, indicatorSize, 0, 2 * Math.PI);
-                    ctx.fill();
-                    ctx.fillStyle = originalFillStyle;
-
-                    setTimeout(() => {
-                        draw(); // Redraw to remove highlight
-                    }, 150);
-
+                // Single click on red dot no longer copies - only used for drag-and-drop
+                // Double-click on red dot will copy to clipboard (see handleDoubleClick)
+                if (payloadRect || payloadConnection) {
                     return; // Don't process other click logic
                 }
                 
