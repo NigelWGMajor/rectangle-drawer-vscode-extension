@@ -1,12 +1,16 @@
 import * as vscode from 'vscode';
 import { DrawingViewProvider } from './drawingViewProvider';
+import { PixEditorProvider } from './pixEditorProvider';
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('Pix extension is now active!');
 
+    // Register the custom text editor provider for .pix.json files
+    context.subscriptions.push(PixEditorProvider.register(context));
+
     // Register the drawing view provider for sidebar
     const drawingProvider = new DrawingViewProvider(context.extensionUri);
-    
+
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(
             'pixView',

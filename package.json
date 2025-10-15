@@ -2,7 +2,7 @@
   "name": "pix",
   "displayName": "Pix",
   "description": "Professional diagram creation tool for VS Code - Draw rectangles, connect them with labeled lines, and create interactive flowcharts and diagrams",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "publisher": "nigelwgmajor",
   "repository": {
     "type": "git",
@@ -31,6 +31,31 @@
   "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
+    "languages": [
+      {
+        "id": "pix",
+        "extensions": [
+          ".pix.json"
+        ],
+        "aliases": [
+          "Pix Drawing",
+          "pix"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "customEditors": [
+      {
+        "viewType": "pix.pixEditor",
+        "displayName": "Pix Drawing Editor",
+        "selector": [
+          {
+            "filenamePattern": "*.pix.json"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
     "commands": [
       {
         "command": "pix.openDrawingView",

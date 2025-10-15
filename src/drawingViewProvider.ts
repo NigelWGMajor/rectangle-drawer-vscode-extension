@@ -1765,9 +1765,10 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
     <title>Rectangle Drawer</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        body {
-            margin: 0;
-            padding: 0;
+        html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            border: 0 !important;
             font-family: var(--vscode-font-family);
             background-color: var(--vscode-editor-background);
             color: var(--vscode-editor-foreground);
@@ -1785,6 +1786,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
             border-bottom: 1px solid var(--vscode-panel-border);
             flex-shrink: 0;
             font-size: ${context === 'sidebar' ? '11px' : '13px'};
+            margin-top: 0 !important;
         }
         
         .controls button {
@@ -2166,7 +2168,7 @@ export class DrawingViewProvider implements vscode.WebviewViewProvider {
         </button>
         <span style="margin-left: 10px; font-size: ${context === 'sidebar' ? '9px' : '11px'};">
             Zoom: <span id="zoomLevel">100%</span>
-            ${context === 'panel' ? `<span id="fileNameDisplayPanel" style="margin-left: 15px; color: var(--vscode-descriptionForeground); display: none;" title=""></span>` : ''}
+            ${context !== 'sidebar' && context !== 'editor' ? `<span id="fileNameDisplayPanel" style="margin-left: 15px; color: var(--vscode-descriptionForeground); display: none;" title=""></span>` : ''}
         </span>
     </div>
     
